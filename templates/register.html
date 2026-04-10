@@ -48,7 +48,7 @@ a{color:var(--accent);text-decoration:none;font-weight:500}
   </div>
 
   <p style="text-align:center;font-size:14px;color:var(--muted);margin-top:1rem">
-    Already have an account? <a href="login.html">Log in</a>
+    Already have an account? <a href="/login">Log in</a>
   </p>
 </div>
 <script>
@@ -60,7 +60,9 @@ function doRegister(){
   if(!name||!email||!pass){flash.style.display='block';flash.textContent='All fields are required.';return;}
   if(pass.length<8){flash.style.display='block';flash.textContent='Password must be at least 8 characters.';return;}
   flash.style.display='none';
-  window.location.href='dashboard.html';
+  
+  // UPDATED: Changed dashboard.html to /dashboard
+  window.location.href='/dashboard';
 }
 document.addEventListener('keydown',e=>{if(e.key==='Enter')doRegister()});
 </script>
