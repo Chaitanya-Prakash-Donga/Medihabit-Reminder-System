@@ -1,6 +1,6 @@
 """
-MediHabit - app.py
-Full Flask backend: auth, CRUD, Gmail SMTP email alerts, APScheduler
+MediHabit - app.py (Updated)
+Fixed: Registration redirects to Login, Index forces Login check.
 """
 
 import os
@@ -86,6 +86,7 @@ def login_required(f):
 
 @app.route('/')
 def index():
+    # If logged in, go to dashboard; otherwise, go to login
     if 'user_id' in session:
         return redirect(url_for('dashboard'))
     return redirect(url_for('login'))
@@ -109,8 +110,8 @@ def register():
         db.session.add(user)
         db.session.commit()
         
-        session['user_id'] = user.id
-        session['user_name'] = user.name
+        # We NO LONGER set session['user_id'] here.
+        # This forces the user to go to the login page first.
         return jsonify({"success": True})
 
     return render_template('register.html')
@@ -126,10 +127,9 @@ def login():
         if user and user.check_password(password):
             session['user_id'] = user.id
             session['user_name'] = user.name
-            # Return JSON so JavaScript knows to redirect
             return jsonify({"success": True})
         
-        return jsonify({"error": "Invalid Credentials"}), 401
+        return jsonify({"error": "Invalid email or password"}), 401
 
     return render_template('login.html')
 
@@ -139,15 +139,17 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
-# ── Routes: Dashboard (No trailing slash) ─────────────────────────────────────
+# ── Routes: Dashboard ─────────────────────────────────────────────────────────
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
     user_id = session['user_id']
+    # Only fetch medications belonging to the logged-in user
     meds = Medication.query.filter_by(user_id=user_id, active=True).all()
     
     today = date.today()
+    # Only fetch logs belonging to the logged-in user
     today_logs = AlertLog.query.filter(
         AlertLog.user_id == user_id,
         db.func.date(AlertLog.sent_at) == today
@@ -161,7 +163,7 @@ def dashboard():
 @login_required
 def add_medication():
     m = Medication(
-        user_id = session['user_id'],
+        user_id = session['user_id'], # Links medication to current user
         name = request.form.get('name', '').strip(),
         dose = request.form.get('dose', '').strip(),
         frequency = request.form.get('frequency', ''),
