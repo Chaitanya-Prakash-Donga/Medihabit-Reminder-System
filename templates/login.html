@@ -55,7 +55,7 @@ function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.style.display = 'block';
-  setTimeout(() => { t.style.display = 'none'; }, 2500);
+  setTimeout(() => { t.style.display = 'none'; }, 2000);
 }
 
 function doLogin(){
@@ -63,9 +63,6 @@ function doLogin(){
   const pass = document.getElementById('password').value;
   const flash = document.getElementById('flash');
   
-  // Debugging log for your F12 console
-  console.log("Login attempt for:", email);
-
   if(!email || !pass){
     flash.style.display = 'block';
     flash.textContent = 'Please fill in all fields.';
@@ -73,16 +70,18 @@ function doLogin(){
   }
 
   flash.style.display = 'none';
-  showToast("Logging in...");
+  showToast("Verifying...");
   
-  // Redirect to the Flask route
-  setTimeout(() => {
-    window.location.href = '/dashboard';
-  }, 800);
+  // Directly set the location. If it still fails, use a tiny timeout.
+  window.location.href = '/dashboard';
 }
 
+// CRITICAL FIX: Prevent "Enter" key from refreshing the page
 document.addEventListener('keydown', e => {
-  if(e.key === 'Enter') doLogin();
+  if(e.key === 'Enter') {
+    e.preventDefault(); 
+    doLogin();
+  }
 });
 </script>
 </body>
