@@ -17,7 +17,7 @@ label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
 .field{margin-bottom:14px}
 .wrap{max-width:380px;margin:4rem auto;padding:0 1rem}
 .logo-box{width:48px;height:48px;border-radius:12px;background:var(--info-bg);display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 12px}
-.flash{padding:10px 14px;border-radius:var(--radius);margin-bottom:1rem;font-size:14px;background:var(--danger-bg);color:var(--danger)}
+.flash{padding:10px 14px;border-radius:var(--radius);margin-bottom:1rem;font-size:14px;background:var(--danger-bg);color:var(--danger);display:none}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--accent);color:var(--accent-fg);padding:10px 20px;border-radius:var(--radius);font-size:13px;display:none;white-space:nowrap;z-index:999}
 a{color:var(--accent);text-decoration:none;font-weight:500}
 </style>
@@ -32,24 +32,27 @@ a{color:var(--accent);text-decoration:none;font-weight:500}
     <p style="font-size:13px;color:var(--muted);margin-top:4px">Log in to manage your reminders</p>
   </div>
 
-  <div id="flash" class="flash" style="display:none"></div>
+  <div id="flash" class="flash"></div>
 
   <div class="card">
-    <div class="field">
-      <label>Email address</label>
-      <input type="email" id="email" placeholder="you@email.com" autocomplete="email"/>
-    </div>
-    <div class="field" style="margin-bottom:1.25rem">
-      <label>Password</label>
-      <input type="password" id="password" placeholder="••••••••" autocomplete="current-password"/>
-    </div>
-    <button type="button" class="btn" onclick="doLogin()">Log in</button>
+    <form id="loginForm">
+      <div class="field">
+        <label>Email address</label>
+        <input type="email" id="email" name="email" placeholder="you@email.com" required autocomplete="email"/>
+      </div>
+      <div class="field" style="margin-bottom:1.25rem">
+        <label>Password</label>
+        <input type="password" id="password" name="password" placeholder="••••••••" required autocomplete="current-password"/>
+      </div>
+      <button type="button" class="btn" onclick="doLogin()">Log in</button>
+    </form>
   </div>
 
   <p style="text-align:center;font-size:14px;color:var(--muted);margin-top:1rem">
     Don't have an account? <a href="/register">Sign up</a>
   </p>
 </div>
+
 <script>
 function showToast(msg) {
   const t = document.getElementById('toast');
@@ -58,27 +61,47 @@ function showToast(msg) {
   setTimeout(() => { t.style.display = 'none'; }, 2000);
 }
 
-function doLogin(){
+async function doLogin() {
   const email = document.getElementById('email').value.trim();
-  const pass = document.getElementById('password').value;
+  const password = document.getElementById('password').value;
   const flash = document.getElementById('flash');
   
-  if(!email || !pass){
+  if (!email || !password) {
     flash.style.display = 'block';
     flash.textContent = 'Please fill in all fields.';
     return;
   }
 
   flash.style.display = 'none';
-  showToast("Logging in...");
-  
-  // Use replace for a more direct browser redirection to the Flask route
-  window.location.replace('/dashboard');
+  showToast("Verifying...");
+
+  try {
+    // We send the data to your Python /login route
+    const formData = new FormData();
+    formData.append('email', email);
+    formData.append('password', password);
+
+    const response = await fetch('/login', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (response.ok) {
+      // If Python says login is good, NOW we go to dashboard
+      window.location.replace('/dashboard');
+    } else {
+      flash.style.display = 'block';
+      flash.textContent = 'Invalid email or password.';
+    }
+  } catch (err) {
+    flash.style.display = 'block';
+    flash.textContent = 'Connection error. Please try again.';
+  }
 }
 
-// Ensure "Enter" key triggers doLogin correctly
+// Support Enter key
 document.addEventListener('keydown', e => {
-  if(e.key === 'Enter') {
+  if (e.key === 'Enter') {
     e.preventDefault(); 
     doLogin();
   }
