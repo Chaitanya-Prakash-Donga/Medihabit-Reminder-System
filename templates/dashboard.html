@@ -69,14 +69,14 @@ label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
 <body>
 
 <nav class="nav">
-  <a href="dashboard.html" class="nav-logo">
+  <a href="/dashboard" class="nav-logo">
     <div class="logo-icon">💊</div>
     MediHabit
   </a>
   <div style="display:flex;align-items:center;gap:10px">
     <div class="avatar">RK</div>
     <span style="font-size:13px;color:var(--muted)">Ravi Kumar</span>
-    <a href="login.html" class="btn btn-sm">Log out</a>
+    <a href="/logout" class="btn btn-sm">Log out</a>
   </div>
 </nav>
 
@@ -165,7 +165,7 @@ function renderMeds(){
         </div>
       </div>
       <div class="med-acts">
-        <a href="edit_medication.html?id=${m.id}" class="btn btn-sm btn-info">Edit</a>
+        <a href="/edit/${m.id}" class="btn btn-sm btn-info">Edit</a>
         <button class="btn btn-sm btn-success" onclick="testSend(${m.id})">Send now</button>
         <button class="btn btn-sm btn-danger" onclick="delMed(${m.id})">Remove</button>
       </div>
