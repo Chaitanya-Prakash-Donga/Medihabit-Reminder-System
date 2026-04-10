@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>MediHabit — Dashboard</title>
 <style>
-/* ... (Keep your existing CSS exactly as it is) ... */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#f5f5f3;--surface:#fff;--border:rgba(0,0,0,0.1);--text:#1a1a1a;--muted:#6b6b6b;--accent:#1a1a1a;--accent-fg:#fff;--info-bg:#E6F1FB;--info:#0C447C;--success-bg:#EAF3DE;--success:#27500A;--danger-bg:#FCEBEB;--danger:#791F1F;--radius:8px;--radius-lg:12px}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px;min-height:100vh}
@@ -39,7 +38,6 @@ label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
 .btn-cancel{background:transparent;color:var(--muted)}
 .badge{font-size:11px;font-weight:500;padding:3px 8px;border-radius:20px}
 .b-blue{background:var(--info-bg);color:var(--info)}
-.b-green{background:var(--success-bg);color:var(--success)}
 .med-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
 .med-row:last-child{border-bottom:none}
 .med-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
@@ -114,7 +112,12 @@ label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
         <div class="row2">
           <div class="field"><label>Dosage</label><input type="text" name="dose" placeholder="e.g. 1 tablet"/></div>
           <div class="field"><label>Frequency</label>
-            <select name="frequency"><option>Once daily</option><option>Twice daily</option><option>Three times daily</option><option>As needed</option></select>
+            <select name="frequency">
+                <option>Once daily</option>
+                <option>Twice daily</option>
+                <option>Three times daily</option>
+                <option>As needed</option>
+            </select>
           </div>
         </div>
         <div class="row2">
@@ -145,13 +148,16 @@ label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
             <div class="med-name">{{ m.name }}</div>
             <div class="med-sub">{{ m.dose if m.dose else '' }} · {{ m.frequency }}</div>
             <div class="chips">
-              <span class="chip">{{ m.time1 }}</span>
-              {% if m.time2 %}<span class="chip">{{ m.time2 }}</span>{% endif %}
-              {% if m.email_enabled %}<span class="badge b-blue">Email</span>{% endif %}
+              <span class="chip">⏰ {{ m.time1 }}</span>
+              {% if m.time2 %}<span class="chip">⏰ {{ m.time2 }}</span>{% endif %}
+              {% if m.email_enabled %}<span class="badge b-blue">Email Alerts On</span>{% endif %}
             </div>
           </div>
           <div class="med-acts">
-            <button class="btn btn-sm btn-success">Active</button>
+            <a href="/medication/edit/{{ m.id }}" class="btn btn-sm btn-info">Edit</a>
+            <form action="/medication/delete/{{ m.id }}" method="POST" style="display:inline;" onsubmit="return confirm('Remove {{ m.name }}?');">
+              <button type="submit" class="btn btn-sm btn-danger">Remove</button>
+            </form>
           </div>
         </div>
         {% endfor %}
@@ -198,8 +204,7 @@ function toast(msg){
     setTimeout(() => t.style.display = 'none', 2500);
 }
 
-// Logic to calculate total alerts for the stat card
-const medsCount = {{ meds|length }};
+// Stats Calculation
 let totalAlerts = 0;
 {% for m in meds %}
     totalAlerts += 1;
@@ -207,7 +212,7 @@ let totalAlerts = 0;
 {% endfor %}
 document.getElementById('s-alerts').textContent = totalAlerts;
 
-// Show flash messages if they exist from Flask
+// Flash messages from Flask
 {% with messages = get_flashed_messages() %}
   {% if messages %}
     toast("{{ messages[0] }}");
