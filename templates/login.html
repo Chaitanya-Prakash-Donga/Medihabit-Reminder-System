@@ -37,11 +37,11 @@ a{color:var(--accent);text-decoration:none;font-weight:500}
   <div class="card">
     <div class="field">
       <label>Email address</label>
-      <input type="email" id="email" placeholder="you@email.com"/>
+      <input type="email" id="email" placeholder="you@email.com" autocomplete="email"/>
     </div>
     <div class="field" style="margin-bottom:1.25rem">
       <label>Password</label>
-      <input type="password" id="password" placeholder="••••••••"/>
+      <input type="password" id="password" placeholder="••••••••" autocomplete="current-password"/>
     </div>
     <button type="button" class="btn" onclick="doLogin()">Log in</button>
   </div>
@@ -70,13 +70,13 @@ function doLogin(){
   }
 
   flash.style.display = 'none';
-  showToast("Verifying...");
+  showToast("Logging in...");
   
-  // Directly set the location. If it still fails, use a tiny timeout.
-  window.location.href = '/dashboard';
+  // Use replace for a more direct browser redirection to the Flask route
+  window.location.replace('/dashboard');
 }
 
-// CRITICAL FIX: Prevent "Enter" key from refreshing the page
+// Ensure "Enter" key triggers doLogin correctly
 document.addEventListener('keydown', e => {
   if(e.key === 'Enter') {
     e.preventDefault(); 
