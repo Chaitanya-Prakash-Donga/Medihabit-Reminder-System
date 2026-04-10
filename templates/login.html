@@ -18,11 +18,14 @@ label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
 .wrap{max-width:380px;margin:4rem auto;padding:0 1rem}
 .logo-box{width:48px;height:48px;border-radius:12px;background:var(--info-bg);display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 12px}
 .flash{padding:10px 14px;border-radius:var(--radius);margin-bottom:1rem;font-size:14px;background:var(--danger-bg);color:var(--danger)}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--accent);color:var(--accent-fg);padding:10px 20px;border-radius:var(--radius);font-size:13px;display:none;white-space:nowrap;z-index:999}
 a{color:var(--accent);text-decoration:none;font-weight:500}
 </style>
 </head>
 <body>
 <div class="wrap">
+  <div id="toast" class="toast"></div>
+
   <div style="text-align:center;margin-bottom:2rem">
     <div class="logo-box">💊</div>
     <h1 style="font-size:22px;font-weight:500">Welcome back</h1>
@@ -40,7 +43,7 @@ a{color:var(--accent);text-decoration:none;font-weight:500}
       <label>Password</label>
       <input type="password" id="password" placeholder="••••••••"/>
     </div>
-    <button class="btn" onclick="doLogin()">Log in</button>
+    <button type="button" class="btn" onclick="doLogin()">Log in</button>
   </div>
 
   <p style="text-align:center;font-size:14px;color:var(--muted);margin-top:1rem">
@@ -48,17 +51,39 @@ a{color:var(--accent);text-decoration:none;font-weight:500}
   </p>
 </div>
 <script>
-function doLogin(){
-  const email=document.getElementById('email').value.trim();
-  const pass=document.getElementById('password').value;
-  const flash=document.getElementById('flash');
-  if(!email||!pass){flash.style.display='block';flash.textContent='Please fill in all fields.';return;}
-  flash.style.display='none';
-  
-  // Line 69 updated: Changed dashboard.html to /dashboard
-  window.location.href='/dashboard';
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; }, 2500);
 }
-document.addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
+
+function doLogin(){
+  const email = document.getElementById('email').value.trim();
+  const pass = document.getElementById('password').value;
+  const flash = document.getElementById('flash');
+  
+  // Debugging log for your F12 console
+  console.log("Login attempt for:", email);
+
+  if(!email || !pass){
+    flash.style.display = 'block';
+    flash.textContent = 'Please fill in all fields.';
+    return;
+  }
+
+  flash.style.display = 'none';
+  showToast("Logging in...");
+  
+  // Redirect to the Flask route
+  setTimeout(() => {
+    window.location.href = '/dashboard';
+  }, 800);
+}
+
+document.addEventListener('keydown', e => {
+  if(e.key === 'Enter') doLogin();
+});
 </script>
 </body>
 </html>
