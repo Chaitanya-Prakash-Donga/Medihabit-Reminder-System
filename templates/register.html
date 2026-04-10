@@ -88,10 +88,9 @@ async function doRegister() {
   try {
     const formData = new FormData();
     formData.append('name', name);
-    formData.append('email', email);
+    formData.append('email', email.toLowerCase()); // Lowercase for consistency
     formData.append('password', password);
 
-    // Send the data to your Python backend
     const response = await fetch('/register', {
       method: 'POST',
       body: formData
@@ -100,11 +99,11 @@ async function doRegister() {
     const data = await response.json();
 
     if (response.ok) {
-      showToast("Success! Redirecting...");
-      // After registration, Python sets the session, so we can go to dashboard
+      showToast("Account created! Redirecting to login...");
+      // SUCCESS: Wait 2 seconds then send to Login page
       setTimeout(() => {
-        window.location.replace('/dashboard');
-      }, 1500);
+        window.location.replace('/login');
+      }, 2000);
     } else {
       flash.style.display = 'block';
       flash.textContent = data.error || 'Registration failed.';
