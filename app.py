@@ -12,7 +12,7 @@ from datetime import datetime, date
 from functools import wraps
 
 from flask import (Flask, render_template, request,
-                   redirect, url_for, session, flash)
+                   redirect, url_for, session, flash, jsonify)
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -20,7 +20,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 # ── App & DB setup ────────────────────────────────────────────────────────────
 
 app = Flask(__name__)
-# IMPORTANT: On Render, set the SECRET_KEY in Environment Variables
+# On Render, ensure SECRET_KEY is set in Environment Variables
 app.secret_key = os.environ.get('SECRET_KEY', 'medihabit-super-secret-key-123')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///medihabit.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -99,20 +99,19 @@ def register():
         password = request.form.get('password', '')
 
         if not name or not email or not password:
-            return "Missing Fields", 400
+            return jsonify({"error": "Missing Fields"}), 400
 
         if User.query.filter_by(email=email).first():
-            return "Email Exists", 400
+            return jsonify({"error": "Email already exists"}), 400
 
         user = User(name=name, email=email)
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
         
-        # Auto-login after registration
         session['user_id'] = user.id
         session['user_name'] = user.name
-        return redirect(url_for('dashboard'))
+        return jsonify({"success": True})
 
     return render_template('register.html')
 
@@ -127,9 +126,10 @@ def login():
         if user and user.check_password(password):
             session['user_id'] = user.id
             session['user_name'] = user.name
-            return redirect(url_for('dashboard'))
+            # Return JSON so JavaScript knows to redirect
+            return jsonify({"success": True})
         
-        return "Invalid Credentials", 401
+        return jsonify({"error": "Invalid Credentials"}), 401
 
     return render_template('login.html')
 
@@ -139,7 +139,7 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
-# ── Routes: Dashboard ─────────────────────────────────────────────────────────
+# ── Routes: Dashboard (No trailing slash) ─────────────────────────────────────
 
 @app.route('/dashboard')
 @login_required
@@ -147,7 +147,6 @@ def dashboard():
     user_id = session['user_id']
     meds = Medication.query.filter_by(user_id=user_id, active=True).all()
     
-    # Get today's logs
     today = date.today()
     today_logs = AlertLog.query.filter(
         AlertLog.user_id == user_id,
