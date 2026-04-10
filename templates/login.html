@@ -44,7 +44,7 @@ a{color:var(--accent);text-decoration:none;font-weight:500}
   </div>
 
   <p style="text-align:center;font-size:14px;color:var(--muted);margin-top:1rem">
-    Don't have an account? <a href="register.html">Sign up</a>
+    Don't have an account? <a href="/register">Sign up</a>
   </p>
 </div>
 <script>
@@ -54,7 +54,9 @@ function doLogin(){
   const flash=document.getElementById('flash');
   if(!email||!pass){flash.style.display='block';flash.textContent='Please fill in all fields.';return;}
   flash.style.display='none';
-  window.location.href='dashboard.html';
+  
+  // Line 69 updated: Changed dashboard.html to /dashboard
+  window.location.href='/dashboard';
 }
 document.addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
 </script>
