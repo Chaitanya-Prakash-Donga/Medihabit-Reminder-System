@@ -1,8 +1,3 @@
-"""
-MediHabit - app.py (Updated)
-Fixed: Registration redirects to Login, Index forces Login check.
-"""
-
 import os
 import smtplib
 import threading
@@ -20,12 +15,11 @@ from apscheduler.schedulers.background import BackgroundScheduler
 # ── App & DB setup ────────────────────────────────────────────────────────────
 
 app = Flask(__name__)
-# On Render, ensure SECRET_KEY is set in Environment Variables
 app.secret_key = os.environ.get('SECRET_KEY', 'medihabit-super-secret-key-123')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///medihabit.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Email credentials (set these in Render Environment Variables)
+# Email credentials
 GMAIL_USER = os.environ.get('GMAIL_USER', '')
 GMAIL_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD', '')
 
@@ -82,11 +76,31 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
+# ── Email Utility Functions ───────────────────────────────────────────────────
+
+def send_welcome_email(user_email, user_name):
+    """Sends a thank you email after successful registration."""
+    with app.app_context():
+        try:
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = "Welcome to MediHabit! 💊"
+            msg['From'] = GMAIL_USER
+            msg['To'] = user_email
+            
+            body = f"Hi {user_name},\n\nThank you for registering with MediHabit! We're here to help you stay on track with your medications.\n\nYou can now log in and start adding your medication reminders.\n\nBest regards,\nThe MediHabit Team"
+            msg.attach(MIMEText(body, 'plain'))
+
+            with smtplib.SMTP('smtp.gmail.com', 587) as server:
+                server.starttls()
+                server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+                server.send_message(msg)
+        except Exception as e:
+            print(f"Welcome email failed: {e}")
+
 # ── Routes: Auth ──────────────────────────────────────────────────────────────
 
 @app.route('/')
 def index():
-    # If logged in, go to dashboard; otherwise, go to login
     if 'user_id' in session:
         return redirect(url_for('dashboard'))
     return redirect(url_for('login'))
@@ -110,8 +124,9 @@ def register():
         db.session.add(user)
         db.session.commit()
         
-        # We NO LONGER set session['user_id'] here.
-        # This forces the user to go to the login page first.
+        # Trigger welcome email in background thread
+        threading.Thread(target=send_welcome_email, args=(email, name), daemon=True).start()
+        
         return jsonify({"success": True})
 
     return render_template('register.html')
@@ -145,11 +160,8 @@ def logout():
 @login_required
 def dashboard():
     user_id = session['user_id']
-    # Only fetch medications belonging to the logged-in user
     meds = Medication.query.filter_by(user_id=user_id, active=True).all()
-    
     today = date.today()
-    # Only fetch logs belonging to the logged-in user
     today_logs = AlertLog.query.filter(
         AlertLog.user_id == user_id,
         db.func.date(AlertLog.sent_at) == today
@@ -163,7 +175,7 @@ def dashboard():
 @login_required
 def add_medication():
     m = Medication(
-        user_id = session['user_id'], # Links medication to current user
+        user_id = session['user_id'],
         name = request.form.get('name', '').strip(),
         dose = request.form.get('dose', '').strip(),
         frequency = request.form.get('frequency', ''),
@@ -176,6 +188,40 @@ def add_medication():
     db.session.add(m)
     db.session.commit()
     flash(f'"{m.name}" added successfully!', 'success')
+    return redirect(url_for('dashboard'))
+
+@app.route('/medication/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
+def edit_medication(id):
+    med = Medication.query.get_or_404(id)
+    # Security: Ensure user owns this medication
+    if med.user_id != session['user_id']:
+        return redirect(url_for('dashboard'))
+
+    if request.method == 'POST':
+        med.name = request.form.get('name', '').strip()
+        med.dose = request.form.get('dose', '').strip()
+        med.frequency = request.form.get('frequency', '')
+        med.time1 = request.form.get('time1', '')
+        med.time2 = request.form.get('time2', '') or None
+        med.recipient_email = request.form.get('recipient_email', '').strip()
+        med.notes = request.form.get('notes', '').strip()
+        med.email_enabled = 'email_enabled' in request.form
+        
+        db.session.commit()
+        flash('Medication updated!', 'success')
+        return redirect(url_for('dashboard'))
+
+    return render_template('edit_medication.html', med=med)
+
+@app.route('/medication/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_medication(id):
+    med = Medication.query.get_or_404(id)
+    if med.user_id == session['user_id']:
+        db.session.delete(med)
+        db.session.commit()
+        flash('Medication removed.', 'info')
     return redirect(url_for('dashboard'))
 
 # ── Email Engine & Scheduler ──────────────────────────────────────────────────
