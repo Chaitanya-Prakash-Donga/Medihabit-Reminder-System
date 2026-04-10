@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>MediHabit — Dashboard</title>
 <style>
+/* ... (Keep your existing CSS exactly as it is) ... */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#f5f5f3;--surface:#fff;--border:rgba(0,0,0,0.1);--text:#1a1a1a;--muted:#6b6b6b;--accent:#1a1a1a;--accent-fg:#fff;--info-bg:#E6F1FB;--info:#0C447C;--success-bg:#EAF3DE;--success:#27500A;--danger-bg:#FCEBEB;--danger:#791F1F;--radius:8px;--radius-lg:12px}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px;min-height:100vh}
@@ -63,7 +64,6 @@ label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--accent);color:var(--accent-fg);padding:10px 20px;border-radius:var(--radius);font-size:13px;display:none;white-space:nowrap;z-index:999}
 .add-form{display:none;margin-bottom:1rem}
 .add-form.open{display:block}
-@media(max-width:520px){.stat-grid{grid-template-columns:1fr 1fr}.row2{grid-template-columns:1fr}.med-acts{flex-wrap:wrap}.page{padding:1rem .75rem}}
 </style>
 </head>
 <body>
@@ -74,8 +74,8 @@ label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
     MediHabit
   </a>
   <div style="display:flex;align-items:center;gap:10px">
-    <div class="avatar">RK</div>
-    <span style="font-size:13px;color:var(--muted)">Ravi Kumar</span>
+    <div class="avatar">{{ session['user_name'][:2].upper() if session.get('user_name') else '??' }}</div>
+    <span style="font-size:13px;color:var(--muted)">{{ session.get('user_name', 'User') }}</span>
     <a href="/logout" class="btn btn-sm">Log out</a>
   </div>
 </nav>
@@ -92,145 +92,127 @@ label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
   </div>
 
   <div class="stat-grid">
-    <div class="stat-card"><div class="stat-label">Medications</div><div class="stat-val" id="s-meds">3</div></div>
-    <div class="stat-card"><div class="stat-label">Alerts today</div><div class="stat-val" id="s-alerts">5</div></div>
-    <div class="stat-card"><div class="stat-label">Sent today</div><div class="stat-val" id="s-sent">4</div></div>
+    <div class="stat-card">
+        <div class="stat-label">Medications</div>
+        <div class="stat-val">{{ meds|length }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Alerts today</div>
+        <div class="stat-val" id="s-alerts">0</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Sent today</div>
+        <div class="stat-val">{{ logs|length }}</div>
+    </div>
   </div>
 
   <div id="add-form" class="add-form">
     <div class="section-label">New medication</div>
     <div class="card">
-      <div class="field"><label>Medication name *</label><input type="text" id="f-name" placeholder="e.g. Metformin 500mg"/></div>
-      <div class="row2">
-        <div class="field"><label>Dosage</label><input type="text" id="f-dose" placeholder="e.g. 1 tablet"/></div>
-        <div class="field"><label>Frequency</label>
-          <select id="f-freq"><option>Once daily</option><option>Twice daily</option><option>Three times daily</option><option>As needed</option></select>
+      <form action="/medication/add" method="POST">
+        <div class="field"><label>Medication name *</label><input type="text" name="name" placeholder="e.g. Metformin 500mg" required/></div>
+        <div class="row2">
+          <div class="field"><label>Dosage</label><input type="text" name="dose" placeholder="e.g. 1 tablet"/></div>
+          <div class="field"><label>Frequency</label>
+            <select name="frequency"><option>Once daily</option><option>Twice daily</option><option>Three times daily</option><option>As needed</option></select>
+          </div>
         </div>
-      </div>
-      <div class="row2">
-        <div class="field"><label>Time 1 *</label><input type="time" id="f-t1" value="08:00"/></div>
-        <div class="field"><label>Time 2 (optional)</label><input type="time" id="f-t2"/></div>
-      </div>
-      <div class="field"><label>Recipient email *</label><input type="email" id="f-email" placeholder="patient@email.com"/></div>
-      <div class="field"><label>Notes</label><input type="text" id="f-notes" placeholder="e.g. Take after meals"/></div>
-      <label class="check-row"><input type="checkbox" id="f-email-on" checked/> Send email reminder</label>
-      <div style="display:flex;gap:8px;margin-top:4px">
-        <button class="btn btn-primary btn-sm" onclick="saveMed()">Save & schedule</button>
-        <button class="btn btn-sm btn-cancel" onclick="toggleForm()">Cancel</button>
-      </div>
+        <div class="row2">
+          <div class="field"><label>Time 1 *</label><input type="time" name="time1" value="08:00" required/></div>
+          <div class="field"><label>Time 2 (optional)</label><input type="time" name="time2"/></div>
+        </div>
+        <div class="field"><label>Recipient email *</label><input type="email" name="recipient_email" placeholder="patient@email.com" required/></div>
+        <div class="field"><label>Notes</label><input type="text" name="notes" placeholder="e.g. Take after meals"/></div>
+        <label class="check-row"><input type="checkbox" name="email_enabled" checked/> Send email reminder</label>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <button type="submit" class="btn btn-primary btn-sm">Save & schedule</button>
+          <button type="button" class="btn btn-sm btn-cancel" onclick="toggleForm()">Cancel</button>
+        </div>
+      </form>
     </div>
   </div>
 
-  <div class="section-label">Today's medications</div>
-  <div class="card" style="padding:.75rem 1.25rem"><div id="med-list"></div></div>
+  <div class="section-label">Your medications</div>
+  <div class="card" style="padding:.75rem 1.25rem">
+    <div id="med-list">
+      {% if not meds %}
+        <div class="empty">No medications yet. Click "+ Add medication" to start.</div>
+      {% else %}
+        {% for m in meds %}
+        <div class="med-row">
+          <div class="med-dot" style="background: #378ADD"></div>
+          <div class="med-body">
+            <div class="med-name">{{ m.name }}</div>
+            <div class="med-sub">{{ m.dose if m.dose else '' }} · {{ m.frequency }}</div>
+            <div class="chips">
+              <span class="chip">{{ m.time1 }}</span>
+              {% if m.time2 %}<span class="chip">{{ m.time2 }}</span>{% endif %}
+              {% if m.email_enabled %}<span class="badge b-blue">Email</span>{% endif %}
+            </div>
+          </div>
+          <div class="med-acts">
+            <button class="btn btn-sm btn-success">Active</button>
+          </div>
+        </div>
+        {% endfor %}
+      {% endif %}
+    </div>
+  </div>
 
   <div class="section-label">Today's alert log</div>
-  <div class="card" style="padding:.75rem 1.25rem"><div id="log-list"></div></div>
+  <div class="card" style="padding:.75rem 1.25rem">
+    <div id="log-list">
+        {% if not logs %}
+            <div class="empty">No alerts sent yet.</div>
+        {% else %}
+            {% for log in logs %}
+            <div class="log-row">
+                <div class="log-icon">✉️</div>
+                <div>
+                    <div class="log-title">Email · {{ log.medication_name }}</div>
+                    <div class="log-sub">{{ log.recipient }} · {{ log.sent_at.strftime('%H:%M') }}</div>
+                    <div class="log-ok">{{ log.status|capitalize }}</div>
+                </div>
+            </div>
+            {% endfor %}
+        {% endif %}
+    </div>
+  </div>
 </div>
 
 <script>
-const DOTS=['#378ADD','#1D9E75','#EF9F27','#D85A30','#7F77DD'];
-let editId=null;
-
-let meds=[
-  {id:1,name:'Metformin 500mg',dose:'1 tablet',freq:'Twice daily',t1:'08:00',t2:'20:00',email:'ravi@email.com',notes:'After meals',emailOn:true},
-  {id:2,name:'Amlodipine 5mg',dose:'1 tablet',freq:'Once daily',t1:'09:00',t2:'',email:'ravi@email.com',notes:'',emailOn:true},
-  {id:3,name:'Vitamin D3',dose:'1 capsule',freq:'Once daily',t1:'10:00',t2:'',email:'ravi@email.com',notes:'With breakfast',emailOn:true},
-];
-
-let logs=[
-  {type:'email',med:'Metformin 500mg',to:'ravi@email.com',time:'8:00 AM',status:'sent'},
-  {type:'email',med:'Amlodipine 5mg',to:'ravi@email.com',time:'9:00 AM',status:'sent'},
-  {type:'email',med:'Vitamin D3',to:'ravi@email.com',time:'10:00 AM',status:'sent'},
-  {type:'email',med:'Metformin 500mg',to:'ravi@email.com',time:'8:00 PM',status:'sent'},
-];
-
-function fmt(t){if(!t)return'';const[h,m]=t.split(':').map(Number);return((h%12)||12)+':'+String(m).padStart(2,'0')+' '+(h>=12?'PM':'AM');}
-
-document.getElementById('today').textContent=new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-
-function renderMeds(){
-  const el=document.getElementById('med-list');
-  if(!meds.length){el.innerHTML='<div class="empty">No medications yet.</div>';return;}
-  el.innerHTML=meds.map((m,i)=>`
-    <div class="med-row">
-      <div class="med-dot" style="background:${DOTS[i%DOTS.length]}"></div>
-      <div class="med-body">
-        <div class="med-name">${m.name}</div>
-        <div class="med-sub">${m.dose?m.dose+' · ':''}${m.freq}${m.notes?' · '+m.notes:''}</div>
-        <div class="chips">
-          ${m.t1?`<span class="chip">${fmt(m.t1)}</span>`:''}
-          ${m.t2?`<span class="chip">${fmt(m.t2)}</span>`:''}
-          ${m.emailOn?'<span class="badge b-blue">Email</span>':''}
-        </div>
-      </div>
-      <div class="med-acts">
-        <a href="/edit/${m.id}" class="btn btn-sm btn-info">Edit</a>
-        <button class="btn btn-sm btn-success" onclick="testSend(${m.id})">Send now</button>
-        <button class="btn btn-sm btn-danger" onclick="delMed(${m.id})">Remove</button>
-      </div>
-    </div>`).join('');
-  document.getElementById('s-meds').textContent=meds.length;
-  document.getElementById('s-alerts').textContent=meds.reduce((a,m)=>a+(m.t1?1:0)+(m.t2?1:0),0);
-}
-
-function renderLogs(){
-  const el=document.getElementById('log-list');
-  if(!logs.length){el.innerHTML='<div class="empty">No alerts sent yet.</div>';return;}
-  el.innerHTML=[...logs].reverse().map(l=>`
-    <div class="log-row">
-      <div class="log-icon">✉️</div>
-      <div>
-        <div class="log-title">Email · ${l.med}</div>
-        <div class="log-sub">${l.to} · ${l.time}</div>
-        <div class="log-ok">Sent</div>
-      </div>
-    </div>`).join('');
-  document.getElementById('s-sent').textContent=logs.filter(l=>l.status==='sent').length;
-}
+document.getElementById('today').textContent = new Date().toLocaleDateString('en-IN', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+});
 
 function toggleForm(){
-  const f=document.getElementById('add-form');
-  f.classList.toggle('open');
-  editId=null;
-  if(f.classList.contains('open'))f.scrollIntoView({behavior:'smooth'});
-}
-
-function saveMed(){
-  const name=document.getElementById('f-name').value.trim();
-  const email=document.getElementById('f-email').value.trim();
-  const t1=document.getElementById('f-t1').value;
-  if(!name||!email||!t1){toast('Name, email and time are required.');return;}
-  meds.push({id:Date.now(),name,dose:document.getElementById('f-dose').value.trim(),
-    freq:document.getElementById('f-freq').value,t1,
-    t2:document.getElementById('f-t2').value||'',email,
-    notes:document.getElementById('f-notes').value.trim(),
-    emailOn:document.getElementById('f-email-on').checked});
-  document.getElementById('add-form').classList.remove('open');
-  ['f-name','f-dose','f-email','f-notes','f-t2'].forEach(id=>document.getElementById(id).value='');
-  renderMeds();toast('Medication added and reminders scheduled!');
-}
-
-function delMed(id){
-  const m=meds.find(x=>x.id===id);
-  if(!confirm(`Remove "${m.name}"?`))return;
-  meds=meds.filter(x=>x.id!==id);renderMeds();toast(`"${m.name}" removed.`);
-}
-
-function testSend(id){
-  const m=meds.find(x=>x.id===id);if(!m)return;
-  const t=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
-  if(m.emailOn&&m.email)logs.push({type:'email',med:m.name,to:m.email,time:t,status:'sent'});
-  renderLogs();toast('Reminder sent!');
+    const f = document.getElementById('add-form');
+    f.classList.toggle('open');
+    if(f.classList.contains('open')) f.scrollIntoView({behavior:'smooth'});
 }
 
 function toast(msg){
-  const t=document.getElementById('toast');
-  t.textContent=msg;t.style.display='block';
-  setTimeout(()=>t.style.display='none',2500);
+    const t = document.getElementById('toast');
+    t.textContent = msg; 
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', 2500);
 }
 
-renderMeds();renderLogs();
+// Logic to calculate total alerts for the stat card
+const medsCount = {{ meds|length }};
+let totalAlerts = 0;
+{% for m in meds %}
+    totalAlerts += 1;
+    {% if m.time2 %} totalAlerts += 1; {% endif %}
+{% endfor %}
+document.getElementById('s-alerts').textContent = totalAlerts;
+
+// Show flash messages if they exist from Flask
+{% with messages = get_flashed_messages() %}
+  {% if messages %}
+    toast("{{ messages[0] }}");
+  {% endif %}
+{% endwith %}
 </script>
 </body>
 </html>
