@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>MediHabit — Alert Log</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f5f5f3;--surface:#fff;--border:rgba(0,0,0,0.1);--text:#1a1a1a;--muted:#6b6b6b;--accent:#1a1a1a;--accent-fg:#fff;--info-bg:#E6F1FB;--info:#0C447C;--success-bg:#EAF3DE;--success:#27500A;--danger-bg:#FCEBEB;--danger:#791F1F;--radius:8px;--radius-lg:12px}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px;min-height:100vh}
+.nav{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+.nav-logo{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:500;text-decoration:none;color:var(--text)}
+.logo-icon{width:30px;height:30px;border-radius:8px;background:var(--info-bg);display:flex;align-items:center;justify-content:center;font-size:15px}
+.avatar{width:30px;height:30px;border-radius:50%;background:var(--info-bg);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;color:var(--info)}
+.page{max-width:760px;margin:0 auto;padding:1.5rem 1.25rem}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1rem 1.25rem;margin-bottom:1rem}
+.card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.card-title{font-size:14px;font-weight:500}
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:8px 16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-size:14px;font-family:inherit;cursor:pointer;text-decoration:none;transition:background .15s}
+.btn:hover{background:var(--bg)}
+.btn-sm{padding:5px 11px;font-size:12px}
+.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:1.25rem}
+.stat-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px}
+.stat-label{font-size:11px;color:var(--muted);margin-bottom:4px}
+.stat-val{font-size:24px;font-weight:500}
+.log-row{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.log-row:last-child{border-bottom:none}
+.log-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px}
+.li-email{background:var(--info-bg)}
+.li-voice{background:var(--success-bg)}
+.log-title{font-size:13px;font-weight:500}
+.log-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.log-ok{font-size:11px;color:var(--success);margin-top:3px}
+.log-fail{font-size:11px;color:var(--danger);margin-top:3px}
+.badge{font-size:11px;font-weight:500;padding:3px 8px;border-radius:20px}
+.b-blue{background:var(--info-bg);color:var(--info)}
+.b-green{background:var(--success-bg);color:var(--success)}
+.b-red{background:var(--danger-bg);color:var(--danger)}
+.filter-bar{display:flex;gap:6px;margin-bottom:1rem;flex-wrap:wrap}
+.filter-btn{padding:5px 12px;font-size:12px;border:1px solid var(--border);border-radius:20px;background:var(--surface);color:var(--muted);cursor:pointer}
+.filter-btn.active{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.empty{text-align:center;padding:2rem;color:var(--muted);font-size:13px}
+@media(max-width:520px){.stat-grid{grid-template-columns:1fr 1fr}.page{padding:1rem .75rem}}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a href="dashboard.html" class="nav-logo">
+    <div class="logo-icon">💊</div>
+    MediHabit
+  </a>
+  <div style="display:flex;align-items:center;gap:10px">
+    <div class="avatar">RK</div>
+    <span style="font-size:13px;color:var(--muted)">Ravi Kumar</span>
+    <a href="login.html" class="btn btn-sm">Log out</a>
+  </div>
+</nav>
+
+<div class="page">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem">
+    <div>
+      <h1 style="font-size:20px;font-weight:500">Alert log</h1>
+      <p style="font-size:12px;color:var(--muted)" id="today"></p>
+    </div>
+    <a href="dashboard.html" class="btn btn-sm">← Dashboard</a>
+  </div>
+
+  <div class="stat-grid">
+    <div class="stat-card"><div class="stat-label">Total sent</div><div class="stat-val" id="s-total">0</div></div>
+    <div class="stat-card"><div class="stat-label">Successful</div><div class="stat-val" id="s-ok">0</div></div>
+    <div class="stat-card"><div class="stat-label">Failed</div><div class="stat-val" id="s-fail">0</div></div>
+  </div>
+
+  <div class="filter-bar">
+    <button class="filter-btn active" onclick="setFilter('all',this)">All</button>
+    <button class="filter-btn" onclick="setFilter('email',this)">Email only</button>
+    <button class="filter-btn" onclick="setFilter('sent',this)">Sent</button>
+    <button class="filter-btn" onclick="setFilter('failed',this)">Failed</button>
+  </div>
+
+  <div class="card" style="padding:.75rem 1.25rem">
+    <div id="log-list"></div>
+  </div>
+</div>
+
+<script>
+const logs=[
+  {type:'email',med:'Metformin 500mg',to:'ravi@email.com',date:'Today',time:'8:00 AM',status:'sent'},
+  {type:'email',med:'Amlodipine 5mg',to:'ravi@email.com',date:'Today',time:'9:00 AM',status:'sent'},
+  {type:'email',med:'Vitamin D3',to:'ravi@email.com',date:'Today',time:'10:00 AM',status:'sent'},
+  {type:'email',med:'Metformin 500mg',to:'ravi@email.com',date:'Today',time:'8:00 PM',status:'sent'},
+  {type:'email',med:'Amlodipine 5mg',to:'ravi@email.com',date:'Yesterday',time:'9:00 AM',status:'sent'},
+  {type:'email',med:'Vitamin D3',to:'ravi@email.com',date:'Yesterday',time:'10:00 AM',status:'failed'},
+  {type:'email',med:'Metformin 500mg',to:'ravi@email.com',date:'Yesterday',time:'8:00 PM',status:'sent'},
+];
+
+let activeFilter='all';
+
+document.getElementById('today').textContent=new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+document.getElementById('s-total').textContent=logs.length;
+document.getElementById('s-ok').textContent=logs.filter(l=>l.status==='sent').length;
+document.getElementById('s-fail').textContent=logs.filter(l=>l.status==='failed').length;
+
+function setFilter(f,el){
+  activeFilter=f;
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  renderLogs();
+}
+
+function renderLogs(){
+  const el=document.getElementById('log-list');
+  let filtered=logs.filter(l=>{
+    if(activeFilter==='email') return l.type==='email';
+    if(activeFilter==='sent')  return l.status==='sent';
+    if(activeFilter==='failed')return l.status==='failed';
+    return true;
+  });
+  if(!filtered.length){el.innerHTML='<div class="empty">No alerts match this filter.</div>';return;}
+  el.innerHTML=[...filtered].reverse().map(l=>`
+    <div class="log-row">
+      <div class="log-icon ${l.type==='email'?'li-email':'li-voice'}">${l.type==='email'?'✉️':'📞'}</div>
+      <div style="flex:1">
+        <div class="log-title">
+          ${l.type==='email'?'Email':'Voice call'} · ${l.med}
+          <span class="badge ${l.status==='sent'?'b-green':'b-red'}" style="margin-left:6px">${l.status}</span>
+        </div>
+        <div class="log-sub">${l.to} · ${l.date} · ${l.time}</div>
+        <div class="${l.status==='sent'?'log-ok':'log-fail'}">${l.status==='sent'?'Delivered successfully':'Delivery failed'}</div>
+      </div>
+    </div>`).join('');
+}
+
+renderLogs();
+</script>
+</body>
+</html>

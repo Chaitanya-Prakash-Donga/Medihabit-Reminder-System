@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>MediHabit — Log in</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f5f5f3;--surface:#fff;--border:rgba(0,0,0,0.1);--text:#1a1a1a;--muted:#6b6b6b;--accent:#1a1a1a;--accent-fg:#fff;--info-bg:#E6F1FB;--info:#0C447C;--danger-bg:#FCEBEB;--danger:#791F1F;--radius:8px;--radius-lg:12px}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column}
+input{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit;font-size:14px;outline:none;transition:border-color .15s}
+input:focus{border-color:var(--accent)}
+label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
+.btn{display:flex;align-items:center;justify-content:center;width:100%;padding:10px;background:var(--accent);color:var(--accent-fg);border:none;border-radius:var(--radius);font-size:14px;font-family:inherit;font-weight:500;cursor:pointer;transition:opacity .15s}
+.btn:hover{opacity:.85}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.5rem}
+.field{margin-bottom:14px}
+.wrap{max-width:380px;margin:4rem auto;padding:0 1rem}
+.logo-box{width:48px;height:48px;border-radius:12px;background:var(--info-bg);display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 12px}
+.flash{padding:10px 14px;border-radius:var(--radius);margin-bottom:1rem;font-size:14px;background:var(--danger-bg);color:var(--danger)}
+a{color:var(--accent);text-decoration:none;font-weight:500}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div style="text-align:center;margin-bottom:2rem">
+    <div class="logo-box">💊</div>
+    <h1 style="font-size:22px;font-weight:500">Welcome back</h1>
+    <p style="font-size:13px;color:var(--muted);margin-top:4px">Log in to manage your reminders</p>
+  </div>
+
+  <div id="flash" class="flash" style="display:none"></div>
+
+  <div class="card">
+    <div class="field">
+      <label>Email address</label>
+      <input type="email" id="email" placeholder="you@email.com"/>
+    </div>
+    <div class="field" style="margin-bottom:1.25rem">
+      <label>Password</label>
+      <input type="password" id="password" placeholder="••••••••"/>
+    </div>
+    <button class="btn" onclick="doLogin()">Log in</button>
+  </div>
+
+  <p style="text-align:center;font-size:14px;color:var(--muted);margin-top:1rem">
+    Don't have an account? <a href="register.html">Sign up</a>
+  </p>
+</div>
+<script>
+function doLogin(){
+  const email=document.getElementById('email').value.trim();
+  const pass=document.getElementById('password').value;
+  const flash=document.getElementById('flash');
+  if(!email||!pass){flash.style.display='block';flash.textContent='Please fill in all fields.';return;}
+  flash.style.display='none';
+  window.location.href='dashboard.html';
+}
+document.addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
+</script>
+</body>
+</html>
