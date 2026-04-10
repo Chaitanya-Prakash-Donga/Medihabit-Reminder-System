@@ -124,7 +124,6 @@ def register():
         db.session.add(user)
         db.session.commit()
         
-        # Trigger welcome email in background thread
         threading.Thread(target=send_welcome_email, args=(email, name), daemon=True).start()
         
         return jsonify({"success": True})
@@ -169,7 +168,7 @@ def dashboard():
     
     return render_template('dashboard.html', meds=meds, logs=today_logs, now=datetime.now())
 
-# ── Routes: Medication CRUD ───────────────────────────────────────────────────
+# ── Routes: Medication CRUD (SECURE) ──────────────────────────────────────────
 
 @app.route('/medication/add', methods=['POST'])
 @login_required
@@ -193,9 +192,12 @@ def add_medication():
 @app.route('/medication/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_medication(id):
+    # 1. Fetch medication
     med = Medication.query.get_or_404(id)
-    # Security: Ensure user owns this medication
+    
+    # 2. SECURE CHECK: Verify the medication belongs to the logged-in user
     if med.user_id != session['user_id']:
+        flash("Unauthorized access attempt blocked.", "danger")
         return redirect(url_for('dashboard'))
 
     if request.method == 'POST':
@@ -209,7 +211,7 @@ def edit_medication(id):
         med.email_enabled = 'email_enabled' in request.form
         
         db.session.commit()
-        flash('Medication updated!', 'success')
+        flash('Medication updated successfully!', 'success')
         return redirect(url_for('dashboard'))
 
     return render_template('edit_medication.html', med=med)
@@ -218,10 +220,15 @@ def edit_medication(id):
 @login_required
 def delete_medication(id):
     med = Medication.query.get_or_404(id)
-    if med.user_id == session['user_id']:
-        db.session.delete(med)
-        db.session.commit()
-        flash('Medication removed.', 'info')
+    
+    # SECURE CHECK: Verify ownership before deleting
+    if med.user_id != session['user_id']:
+        flash("Unauthorized deletion attempt.", "danger")
+        return redirect(url_for('dashboard'))
+        
+    db.session.delete(med)
+    db.session.commit()
+    flash('Medication removed.', 'info')
     return redirect(url_for('dashboard'))
 
 # ── Email Engine & Scheduler ──────────────────────────────────────────────────
