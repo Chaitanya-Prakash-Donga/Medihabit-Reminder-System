@@ -18,11 +18,15 @@ label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
 .wrap{max-width:380px;margin:4rem auto;padding:0 1rem}
 .logo-box{width:48px;height:48px;border-radius:12px;background:var(--info-bg);display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 12px}
 .flash{padding:10px 14px;border-radius:var(--radius);margin-bottom:1rem;font-size:14px;background:var(--danger-bg);color:var(--danger)}
+/* Toast notification styling */
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--accent);color:var(--accent-fg);padding:10px 20px;border-radius:var(--radius);font-size:13px;display:none;white-space:nowrap;z-index:999}
 a{color:var(--accent);text-decoration:none;font-weight:500}
 </style>
 </head>
 <body>
 <div class="wrap">
+  <div id="toast" class="toast"></div>
+
   <div style="text-align:center;margin-bottom:2rem">
     <div class="logo-box">💊</div>
     <h1 style="font-size:22px;font-weight:500">Create your account</h1>
@@ -52,18 +56,42 @@ a{color:var(--accent);text-decoration:none;font-weight:500}
   </p>
 </div>
 <script>
+// Logic to show toast message
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; }, 2500);
+}
+
 function doRegister(){
   const name=document.getElementById('name').value.trim();
   const email=document.getElementById('email').value.trim();
   const pass=document.getElementById('password').value;
   const flash=document.getElementById('flash');
-  if(!name||!email||!pass){flash.style.display='block';flash.textContent='All fields are required.';return;}
-  if(pass.length<8){flash.style.display='block';flash.textContent='Password must be at least 8 characters.';return;}
+
+  if(!name||!email||!pass){
+    flash.style.display='block';
+    flash.textContent='All fields are required.';
+    return;
+  }
+  if(pass.length < 8){
+    flash.style.display='block';
+    flash.textContent='Password must be at least 8 characters.';
+    return;
+  }
+  
   flash.style.display='none';
   
-  // UPDATED: Changed dashboard.html to /dashboard
-  window.location.href='/dashboard';
+  // 1. Show the success message
+  showToast("Account created successfully!");
+  
+  // 2. Wait 2 seconds so the user can see the message, then redirect to login
+  setTimeout(() => {
+    window.location.href='/login';
+  }, 2000);
 }
+
 document.addEventListener('keydown',e=>{if(e.key==='Enter')doRegister()});
 </script>
 </body>
