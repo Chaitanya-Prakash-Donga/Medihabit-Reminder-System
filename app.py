@@ -17,7 +17,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'medihabit-super-secret-key-123')
 
-# FIX: Ensures PostgreSQL works on Render (handles 'postgres://' vs 'postgresql://')
+# Fix for PostgreSQL connection string on Render
 database_url = os.environ.get('DATABASE_URL', 'sqlite:///medihabit.db')
 if database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
@@ -48,20 +48,18 @@ class User(db.Model):
     def check_password(self, pw):
         return check_password_hash(self.password_hash, pw)
 
-
 class Medication(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     name = db.Column(db.String(200), nullable=False)
     dose = db.Column(db.String(100))
     frequency = db.Column(db.String(50))
-    time1 = db.Column(db.String(5))   # Format "HH:MM"
+    time1 = db.Column(db.String(5))   
     time2 = db.Column(db.String(5), nullable=True)
     recipient_email = db.Column(db.String(120))
     notes = db.Column(db.String(300))
     email_enabled = db.Column(db.Boolean, default=True)
     active = db.Column(db.Boolean, default=True)
-
 
 class AlertLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -85,40 +83,37 @@ def login_required(f):
 # ── Email Utility Functions ───────────────────────────────────────────────────
 
 def send_welcome_email(user_email, user_name):
-    """Sends a thank you email after registration."""
+    """Sends a thank you email after registration with robust SMTP handling."""
     with app.app_context():
         try:
             msg = MIMEMultipart()
             msg['Subject'] = "Welcome to MediHabit! 💊"
-            msg['From'] = GMAIL_USER
+            msg['From'] = f"MediHabit Reminder <{GMAIL_USER}>"
             msg['To'] = user_email
             
             body = f"Hi {user_name},\n\nWelcome to MediHabit! Your account is active. Log in to start adding reminders.\n\nBest,\nThe MediHabit Team"
             msg.attach(MIMEText(body, 'plain'))
 
-            with smtplib.SMTP('smtp.gmail.com', 587) as server:
-                server.starttls()
-                server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-                server.send_message(msg)
+            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server.starttls()
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.send_message(msg)
+            server.quit()
+            print(f"✅ Welcome email successfully sent to {user_email}")
         except Exception as e:
-            print(f"Welcome email error: {e}")
+            print(f"❌ Welcome email error: {str(e)}")
 
 def send_admin_report():
-    """Admin Feature: Sends a list of all users and their meds to the admin email."""
     with app.app_context():
         users = User.query.all()
-        if not users:
-            return
+        if not users: return
 
         report = f"📋 MEDIHABIT SYSTEM REPORT - {date.today()}\n" + "="*40 + "\n\n"
         for u in users:
             report += f"USER: {u.name} ({u.email})\n"
             meds = Medication.query.filter_by(user_id=u.id).all()
-            if meds:
-                for m in meds:
-                    report += f"  - [Med] {m.name} | [Time] {m.time1} | [To] {m.recipient_email}\n"
-            else:
-                report += "  - No medications added yet.\n"
+            for m in meds:
+                report += f"  - [Med] {m.name} | [Time] {m.time1}\n"
             report += "-"*40 + "\n"
 
         try:
@@ -128,11 +123,11 @@ def send_admin_report():
             msg['To'] = ADMIN_EMAIL
             msg.attach(MIMEText(report, 'plain'))
 
-            with smtplib.SMTP('smtp.gmail.com', 587) as server:
-                server.starttls()
-                server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-                server.send_message(msg)
-            print("✅ Admin report sent successfully.")
+            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server.starttls()
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.send_message(msg)
+            server.quit()
         except Exception as e:
             print(f"❌ Admin report failed: {e}")
 
@@ -147,7 +142,10 @@ def index():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        name, email, pw = request.form.get('name'), request.form.get('email').strip().lower(), request.form.get('password')
+        name = request.form.get('name')
+        email = request.form.get('email').strip().lower()
+        pw = request.form.get('password')
+        
         if not name or not email or not pw:
             return jsonify({"error": "Fields missing"}), 400
         if User.query.filter_by(email=email).first():
@@ -158,14 +156,18 @@ def register():
         db.session.add(user)
         db.session.commit()
         
-        threading.Thread(target=send_welcome_email, args=(email, name), daemon=True).start()
+        # Using explicit thread management for reliability
+        t = threading.Thread(target=send_welcome_email, args=(email, name))
+        t.start()
+        
         return jsonify({"success": True})
     return render_template('register.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        email, pw = request.form.get('email').strip().lower(), request.form.get('password')
+        email = request.form.get('email').strip().lower()
+        pw = request.form.get('password')
         user = User.query.filter_by(email=email).first()
         if user and user.check_password(pw):
             session['user_id'], session['user_name'] = user.id, user.name
@@ -186,8 +188,6 @@ def dashboard():
     logs = AlertLog.query.filter(AlertLog.user_id == uid, db.func.date(AlertLog.sent_at) == date.today()).all()
     return render_template('dashboard.html', meds=meds, logs=logs, now=datetime.now())
 
-# ── Medication CRUD ───────────────────────────────────────────────────────────
-
 @app.route('/medication/add', methods=['POST'])
 @login_required
 def add_medication():
@@ -207,8 +207,6 @@ def add_medication():
     flash(f'"{m.name}" added!', 'success')
     return redirect(url_for('dashboard'))
 
-# ... (Include existing edit/delete routes here) ...
-
 # ── Engine & Scheduler ────────────────────────────────────────────────────────
 
 def send_email_reminder(med_id):
@@ -222,10 +220,12 @@ def send_email_reminder(med_id):
             msg['To'] = med.recipient_email
             body = f"Time to take {med.name} ({med.dose}).\nNotes: {med.notes}"
             msg.attach(MIMEText(body, 'plain'))
-            with smtplib.SMTP('smtp.gmail.com', 587) as s:
-                s.starttls()
-                s.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-                s.send_message(msg)
+            
+            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server.starttls()
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.send_message(msg)
+            server.quit()
             _log(med, 'sent')
         except Exception as e:
             _log(med, 'failed', str(e))
@@ -236,6 +236,7 @@ def _log(med, status, error=None):
 
 def check_and_send():
     with app.app_context():
+        # Current time in HH:MM format (syncs with TZ environment variable)
         now = datetime.now().strftime('%H:%M')
         meds = Medication.query.filter_by(active=True, email_enabled=True).all()
         for m in meds:
@@ -249,8 +250,7 @@ with app.app_context():
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(check_and_send, 'interval', minutes=1)
-# Schedule the Admin Report for 10:00 PM (22:00)
-scheduler.add_job(send_admin_report, 'cron', hour=22, minute=0)
+scheduler.add_job(send_admin_report, 'cron', hour=22, minute=0) # 10 PM IST
 scheduler.start()
 
 if __name__ == '__main__':
