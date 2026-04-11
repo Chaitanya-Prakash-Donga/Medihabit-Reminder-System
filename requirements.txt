@@ -1,4 +1,9 @@
 Flask
 Flask-SQLAlchemy
+Flask-Migrate
 APScheduler
 gunicorn
+psycopg2-binary
+sqlalchemy
+werkzeug
+email-validator
