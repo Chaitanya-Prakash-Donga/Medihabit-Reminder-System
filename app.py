@@ -25,6 +25,13 @@ if database_url.startswith("postgres://"):
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# FIX: SSL SYSCALL error / EOF detected fix
+# This keeps the database connection alive on Render's free tier
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    "pool_pre_ping": True,
+    "pool_recycle": 300,
+}
+
 # Credentials from Environment Variables
 GMAIL_USER = os.environ.get('GMAIL_USER', '')
 GMAIL_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD', '')
@@ -83,7 +90,6 @@ def login_required(f):
 # ── Email Utility Functions ───────────────────────────────────────────────────
 
 def send_welcome_email(user_email, user_name):
-    """Sends a thank you email after registration with robust SMTP handling."""
     with app.app_context():
         try:
             msg = MIMEMultipart()
@@ -99,37 +105,9 @@ def send_welcome_email(user_email, user_name):
             server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
             server.send_message(msg)
             server.quit()
-            print(f"✅ Welcome email successfully sent to {user_email}")
+            print(f"✅ Welcome email sent to {user_email}")
         except Exception as e:
             print(f"❌ Welcome email error: {str(e)}")
-
-def send_admin_report():
-    with app.app_context():
-        users = User.query.all()
-        if not users: return
-
-        report = f"📋 MEDIHABIT SYSTEM REPORT - {date.today()}\n" + "="*40 + "\n\n"
-        for u in users:
-            report += f"USER: {u.name} ({u.email})\n"
-            meds = Medication.query.filter_by(user_id=u.id).all()
-            for m in meds:
-                report += f"  - [Med] {m.name} | [Time] {m.time1}\n"
-            report += "-"*40 + "\n"
-
-        try:
-            msg = MIMEMultipart()
-            msg['Subject'] = f"MediHabit Admin Activity Report: {date.today()}"
-            msg['From'] = GMAIL_USER
-            msg['To'] = ADMIN_EMAIL
-            msg.attach(MIMEText(report, 'plain'))
-
-            server = smtplib.SMTP('smtp.gmail.com', 587)
-            server.starttls()
-            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-            server.send_message(msg)
-            server.quit()
-        except Exception as e:
-            print(f"❌ Admin report failed: {e}")
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
@@ -156,7 +134,6 @@ def register():
         db.session.add(user)
         db.session.commit()
         
-        # Using explicit thread management for reliability
         t = threading.Thread(target=send_welcome_email, args=(email, name))
         t.start()
         
@@ -188,6 +165,8 @@ def dashboard():
     logs = AlertLog.query.filter(AlertLog.user_id == uid, db.func.date(AlertLog.sent_at) == date.today()).all()
     return render_template('dashboard.html', meds=meds, logs=logs, now=datetime.now())
 
+# ── Medication CRUD (Create, Read, Update, Delete) ────────────────────────────
+
 @app.route('/medication/add', methods=['POST'])
 @login_required
 def add_medication():
@@ -207,6 +186,37 @@ def add_medication():
     flash(f'"{m.name}" added!', 'success')
     return redirect(url_for('dashboard'))
 
+@app.route('/medication/edit/<int:id>', methods=['POST'])
+@login_required
+def edit_medication(id):
+    m = Medication.query.get_or_404(id)
+    if m.user_id != session['user_id']:
+        return "Unauthorized", 403
+    
+    m.name = request.form.get('name')
+    m.dose = request.form.get('dose')
+    m.frequency = request.form.get('frequency')
+    m.time1 = request.form.get('time1')
+    m.time2 = request.form.get('time2') or None
+    m.recipient_email = request.form.get('recipient_email')
+    m.notes = request.form.get('notes')
+    m.email_enabled = 'email_enabled' in request.form
+    
+    db.session.commit()
+    flash(f'"{m.name}" updated!', 'success')
+    return redirect(url_for('dashboard'))
+
+@app.route('/medication/delete/<int:id>')
+@login_required
+def delete_medication(id):
+    m = Medication.query.get_or_404(id)
+    if m.user_id != session['user_id']:
+        return "Unauthorized", 403
+    db.session.delete(m)
+    db.session.commit()
+    flash("Medication removed.", "info")
+    return redirect(url_for('dashboard'))
+
 # ── Engine & Scheduler ────────────────────────────────────────────────────────
 
 def send_email_reminder(med_id):
@@ -216,7 +226,7 @@ def send_email_reminder(med_id):
         try:
             msg = MIMEMultipart()
             msg['Subject'] = f"💊 Reminder: {med.name}"
-            msg['From'] = GMAIL_USER
+            msg['From'] = f"MediHabit <{GMAIL_USER}>"
             msg['To'] = med.recipient_email
             body = f"Time to take {med.name} ({med.dose}).\nNotes: {med.notes}"
             msg.attach(MIMEText(body, 'plain'))
@@ -236,7 +246,6 @@ def _log(med, status, error=None):
 
 def check_and_send():
     with app.app_context():
-        # Current time in HH:MM format (syncs with TZ environment variable)
         now = datetime.now().strftime('%H:%M')
         meds = Medication.query.filter_by(active=True, email_enabled=True).all()
         for m in meds:
@@ -250,7 +259,6 @@ with app.app_context():
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(check_and_send, 'interval', minutes=1)
-scheduler.add_job(send_admin_report, 'cron', hour=22, minute=0) # 10 PM IST
 scheduler.start()
 
 if __name__ == '__main__':
