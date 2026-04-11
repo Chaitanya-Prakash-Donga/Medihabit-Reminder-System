@@ -16,12 +16,20 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'medihabit-super-secret-key-123')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///medihabit.db')
+
+# IMPORTANT: Switching to PostgreSQL to prevent data erasing
+# On Render, set DATABASE_URL in Environment Variables
+database_url = os.environ.get('DATABASE_URL', 'sqlite:///medihabit.db')
+if database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Email credentials
 GMAIL_USER = os.environ.get('GMAIL_USER', '')
 GMAIL_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD', '')
+ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', GMAIL_USER) # Default to your email
 
 db = SQLAlchemy(app)
 
@@ -96,6 +104,38 @@ def send_welcome_email(user_email, user_name):
                 server.send_message(msg)
         except Exception as e:
             print(f"Welcome email failed: {e}")
+
+def send_admin_report():
+    """Sends a complete list of users and medications to the admin."""
+    with app.app_context():
+        users = User.query.all()
+        if not users:
+            return
+
+        report = "📋 MEDIHABIT SYSTEM REPORT\n" + "="*30 + "\n\n"
+        for u in users:
+            report += f"USER: {u.name} ({u.email})\n"
+            meds = Medication.query.filter_by(user_id=u.id).all()
+            if meds:
+                for m in meds:
+                    report += f"  - {m.name} | {m.time1} | Recipient: {m.recipient_email}\n"
+            else:
+                report += "  - No medications added.\n"
+            report += "-"*30 + "\n"
+
+        try:
+            msg = MIMEMultipart()
+            msg['Subject'] = f"MediHabit Admin Report - {date.today()}"
+            msg['From'] = GMAIL_USER
+            msg['To'] = ADMIN_EMAIL
+            msg.attach(MIMEText(report, 'plain'))
+
+            with smtplib.SMTP('smtp.gmail.com', 587) as server:
+                server.starttls()
+                server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+                server.send_message(msg)
+        except Exception as e:
+            print(f"Admin report failed: {e}")
 
 # ── Routes: Auth ──────────────────────────────────────────────────────────────
 
@@ -192,10 +232,7 @@ def add_medication():
 @app.route('/medication/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_medication(id):
-    # 1. Fetch medication
     med = Medication.query.get_or_404(id)
-    
-    # 2. SECURE CHECK: Verify the medication belongs to the logged-in user
     if med.user_id != session['user_id']:
         flash("Unauthorized access attempt blocked.", "danger")
         return redirect(url_for('dashboard'))
@@ -220,8 +257,6 @@ def edit_medication(id):
 @login_required
 def delete_medication(id):
     med = Medication.query.get_or_404(id)
-    
-    # SECURE CHECK: Verify ownership before deleting
     if med.user_id != session['user_id']:
         flash("Unauthorized deletion attempt.", "danger")
         return redirect(url_for('dashboard'))
@@ -278,7 +313,10 @@ with app.app_context():
     db.create_all()
 
 scheduler = BackgroundScheduler()
+# Check for reminders every minute
 scheduler.add_job(check_and_send, 'interval', minutes=1)
+# Send Admin Report every day at 10 PM IST (if TZ is set to Asia/Kolkata)
+scheduler.add_job(send_admin_report, 'cron', hour=22, minute=0)
 scheduler.start()
 
 if __name__ == '__main__':
