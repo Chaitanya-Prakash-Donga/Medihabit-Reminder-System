@@ -1,6 +1,7 @@
 import os
 import smtplib
 import threading
+import pytz
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, date, timedelta
@@ -17,9 +18,12 @@ from apscheduler.schedulers.background import BackgroundScheduler
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'medihabit-super-secret-key-123')
 
+# Timezone Configuration (India Standard Time)
+IST = pytz.timezone('Asia/Kolkata')
+
 # Database configuration with Render PostgreSQL fix
 database_url = os.environ.get('DATABASE_URL', 'sqlite:///medihabit.db')
-if database_url.startswith("postgres://"):
+if database_url and database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
@@ -28,17 +32,15 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # FIX: Keep database connection alive and prevent SSL EOF errors
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     "pool_pre_ping": True,
-    "pool_recycle": 300,
+    "pool_recycle": 280,
 }
+
+db = SQLAlchemy(app)
 
 # ── Credentials & Admin Config ────────────────────────────────────────────────
 GMAIL_USER = os.environ.get('GMAIL_USER', '')
 GMAIL_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD', '')
-
-# This line ensures it defaults to your Gmail if you don't set a separate Admin variable
 ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', GMAIL_USER)
-
-db = SQLAlchemy(app)
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
@@ -47,7 +49,7 @@ class User(db.Model):
     name = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(IST))
     medications = db.relationship('Medication', backref='user', lazy=True, cascade='all, delete-orphan')
 
     def set_password(self, pw):
@@ -74,11 +76,15 @@ class AlertLog(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     medication_name = db.Column(db.String(200))
     recipient = db.Column(db.String(120))
-    sent_at = db.Column(db.DateTime, default=datetime.utcnow)
+    sent_at = db.Column(db.DateTime, default=lambda: datetime.now(IST))
     status = db.Column(db.String(20), default='sent')
     error = db.Column(db.String(300))
 
-# ── Auth decorator ────────────────────────────────────────────────────────────
+# ── Helpers & Decorators ──────────────────────────────────────────────────────
+
+@app.teardown_appcontext
+def shutdown_session(exception=None):
+    db.session.remove()
 
 def login_required(f):
     @wraps(f)
@@ -91,14 +97,13 @@ def login_required(f):
 # ── Email Utility Functions ───────────────────────────────────────────────────
 
 def send_welcome_email(user_email, user_name):
-    """Sends a thank you email after registration."""
     with app.app_context():
         try:
             msg = MIMEMultipart()
             msg['Subject'] = "Welcome to MediHabit! 💊"
             msg['From'] = f"MediHabit Team <{GMAIL_USER}>"
             msg['To'] = user_email
-            body = f"Hi {user_name},\n\nWelcome to MediHabit! Your account is active. You can now set medicine reminders.\n\nBest,\nThe MediHabit Team"
+            body = f"Hi {user_name},\n\nWelcome to MediHabit! Your account is active.\n\nBest,\nMediHabit Team"
             msg.attach(MIMEText(body, 'plain'))
 
             server = smtplib.SMTP('smtp.gmail.com', 587, timeout=30)
@@ -108,33 +113,6 @@ def send_welcome_email(user_email, user_name):
             server.quit()
         except Exception as e:
             print(f"❌ Welcome Email Error: {str(e)}")
-
-def send_daily_admin_report():
-    """Sends a summary of new registrations to the admin email."""
-    with app.app_context():
-        try:
-            yesterday = datetime.utcnow() - timedelta(days=1)
-            new_users = User.query.filter(User.created_at >= yesterday).all()
-            total_count = User.query.count()
-
-            report_body = f"📊 Daily Report for {date.today()}\nTotal Users: {total_count}\nNew Users (24h): {len(new_users)}\n\n"
-            for u in new_users:
-                report_body += f"- {u.name} ({u.email})\n"
-
-            msg = MIMEMultipart()
-            msg['Subject'] = f"MediHabit Admin Report: {date.today()}"
-            msg['From'] = GMAIL_USER
-            msg['To'] = ADMIN_EMAIL
-            msg.attach(MIMEText(report_body, 'plain'))
-
-            server = smtplib.SMTP('smtp.gmail.com', 587, timeout=30)
-            server.starttls()
-            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-            server.send_message(msg)
-            server.quit()
-            print("✅ Admin Report Sent.")
-        except Exception as e:
-            print(f"❌ Admin Report Error: {str(e)}")
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
@@ -147,20 +125,24 @@ def index():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        name = request.form.get('name')
-        email = request.form.get('email').strip().lower()
-        pw = request.form.get('password')
-        
-        if User.query.filter_by(email=email).first():
-            return jsonify({"error": "Email already registered"}), 400
-        
-        user = User(name=name, email=email)
-        user.set_password(pw)
-        db.session.add(user)
-        db.session.commit()
-        
-        threading.Thread(target=send_welcome_email, args=(email, name)).start()
-        return jsonify({"success": True})
+        try:
+            name = request.form.get('name')
+            email = request.form.get('email').strip().lower()
+            pw = request.form.get('password')
+            
+            if User.query.filter_by(email=email).first():
+                return jsonify({"error": "Email already registered"}), 400
+            
+            user = User(name=name, email=email)
+            user.set_password(pw)
+            db.session.add(user)
+            db.session.commit()
+            
+            threading.Thread(target=send_welcome_email, args=(email, name)).start()
+            return jsonify({"success": True})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"error": "Database error. Please try again."}), 500
     return render_template('register.html')
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -170,7 +152,8 @@ def login():
         pw = request.form.get('password')
         user = User.query.filter_by(email=email).first()
         if user and user.check_password(pw):
-            session['user_id'], session['user_name'] = user.id, user.name
+            session['user_id'] = user.id
+            session['user_name'] = user.name
             return jsonify({"success": True})
         return jsonify({"error": "Invalid credentials"}), 401
     return render_template('login.html')
@@ -185,8 +168,15 @@ def logout():
 def dashboard():
     uid = session['user_id']
     meds = Medication.query.filter_by(user_id=uid, active=True).all()
-    logs = AlertLog.query.filter(AlertLog.user_id == uid, db.func.date(AlertLog.sent_at) == date.today()).all()
-    return render_template('dashboard.html', meds=meds, logs=logs, now=datetime.now())
+    
+    # Show logs only for today in IST
+    today_ist = datetime.now(IST).date()
+    logs = AlertLog.query.filter(
+        AlertLog.user_id == uid, 
+        db.func.date(AlertLog.sent_at) == today_ist
+    ).order_by(AlertLog.sent_at.desc()).all()
+    
+    return render_template('dashboard.html', meds=meds, logs=logs)
 
 @app.route('/medication/add', methods=['POST'])
 @login_required
@@ -204,7 +194,7 @@ def add_medication():
     )
     db.session.add(m)
     db.session.commit()
-    flash(f'"{m.name}" added!', 'success')
+    flash(f'"{m.name}" scheduled successfully!', 'success')
     return redirect(url_for('dashboard'))
 
 @app.route('/medication/edit/<int:id>', methods=['GET', 'POST'])
@@ -225,7 +215,7 @@ def edit_medication(id):
         m.email_enabled = 'email_enabled' in request.form
         
         db.session.commit()
-        flash("Medication updated!", "success")
+        flash("Changes saved!", "success")
         return redirect(url_for('dashboard'))
     
     return render_template('edit_medication.html', med=m)
@@ -238,7 +228,7 @@ def delete_medication(id):
         return "Unauthorized", 403
     db.session.delete(m)
     db.session.commit()
-    flash("Medication deleted.", "info")
+    flash("Medication removed.", "info")
     return redirect(url_for('dashboard'))
 
 # ── Reminder Engine ───────────────────────────────────────────────────────────
@@ -249,13 +239,13 @@ def send_email_reminder(med_id):
         if not med or not med.email_enabled: return
         try:
             msg = MIMEMultipart()
-            msg['Subject'] = f"💊 Reminder: {med.name}"
-            msg['From'] = GMAIL_USER
+            msg['Subject'] = f"💊 Time for {med.name}"
+            msg['From'] = f"MediHabit <{GMAIL_USER}>"
             msg['To'] = med.recipient_email
-            body = f"Hello,\n\nTime to take {med.name} ({med.dose}).\nNotes: {med.notes}"
+            body = f"Hello,\n\nIt is time to take your medication:\n\nName: {med.name}\nDosage: {med.dose}\nNotes: {med.notes}\n\nStay healthy!"
             msg.attach(MIMEText(body, 'plain'))
             
-            server = smtplib.SMTP('smtp.gmail.com', 587, timeout=30)
+            server = smtplib.SMTP('smtp.gmail.com', 587, timeout=20)
             server.starttls()
             server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
             server.send_message(msg)
@@ -264,26 +254,28 @@ def send_email_reminder(med_id):
             db.session.add(AlertLog(user_id=med.user_id, medication_name=med.name, recipient=med.recipient_email, status='sent'))
             db.session.commit()
         except Exception as e:
+            print(f"Email Fail: {e}")
+            db.session.rollback()
             db.session.add(AlertLog(user_id=med.user_id, medication_name=med.name, recipient=med.recipient_email, status='failed', error=str(e)))
             db.session.commit()
 
 def check_and_send():
     with app.app_context():
-        now = datetime.now().strftime('%H:%M')
+        # Get current time in IST
+        now_str = datetime.now(IST).strftime('%H:%M')
         meds = Medication.query.filter_by(active=True, email_enabled=True).all()
         for m in meds:
-            if m.time1 == now or m.time2 == now:
+            if m.time1 == now_str or m.time2 == now_str:
                 threading.Thread(target=send_email_reminder, args=(m.id,), daemon=True).start()
 
-# ── Scheduler Initialization ──────────────────────────────────────────────────
+# ── Startup ───────────────────────────────────────────────────────────────────
 
 with app.app_context():
     db.create_all()
 
-scheduler = BackgroundScheduler()
+# Scheduler with IST timezone
+scheduler = BackgroundScheduler(timezone=IST)
 scheduler.add_job(check_and_send, 'interval', minutes=1)
-# Sends the admin report daily at midnight
-scheduler.add_job(send_daily_admin_report, 'cron', hour=0, minute=0)
 scheduler.start()
 
 if __name__ == '__main__':
