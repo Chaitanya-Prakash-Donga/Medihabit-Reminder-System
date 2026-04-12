@@ -40,6 +40,7 @@ db = SQLAlchemy(app)
 # ── Credentials & Admin Config ────────────────────────────────────────────────
 GMAIL_USER = os.environ.get('GMAIL_USER', '')
 GMAIL_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD', '')
+# If ADMIN_EMAIL is not set, it defaults to GMAIL_USER
 ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', GMAIL_USER)
 
 # ── Models ────────────────────────────────────────────────────────────────────
@@ -96,23 +97,33 @@ def login_required(f):
 
 # ── Email Utility Functions ───────────────────────────────────────────────────
 
-def send_welcome_email(user_email, user_name):
+def send_welcome_and_admin_alert(user_email, user_name):
     with app.app_context():
         try:
-            msg = MIMEMultipart()
-            msg['Subject'] = "Welcome to MediHabit! 💊"
-            msg['From'] = f"MediHabit Team <{GMAIL_USER}>"
-            msg['To'] = user_email
-            body = f"Hi {user_name},\n\nWelcome to MediHabit! Your account is active.\n\nBest,\nMediHabit Team"
-            msg.attach(MIMEText(body, 'plain'))
+            # 1. Welcome Email to User
+            msg_user = MIMEMultipart()
+            msg_user['Subject'] = "Welcome to MediHabit! 💊"
+            msg_user['From'] = f"MediHabit Team <{GMAIL_USER}>"
+            msg_user['To'] = user_email
+            body_user = f"Hi {user_name},\n\nWelcome to MediHabit! Your account is active.\n\nBest,\nMediHabit Team"
+            msg_user.attach(MIMEText(body_user, 'plain'))
 
-            server = smtplib.SMTP('smtp.gmail.com', 587, timeout=30)
-            server.starttls()
+            # 2. Alert to Admin (New registration notification)
+            msg_admin = MIMEMultipart()
+            msg_admin['Subject'] = f"New User Registered: {user_name}"
+            msg_admin['From'] = GMAIL_USER
+            msg_admin['To'] = ADMIN_EMAIL
+            body_admin = f"New Registration Details:\nName: {user_name}\nEmail: {user_email}\nTime: {datetime.now(IST)}"
+            msg_admin.attach(MIMEText(body_admin, 'plain'))
+
+            # Using Port 465 (SSL) for reliable delivery on Render
+            server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=30)
             server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-            server.send_message(msg)
+            server.send_message(msg_user)
+            server.send_message(msg_admin)
             server.quit()
         except Exception as e:
-            print(f"❌ Welcome Email Error: {str(e)}")
+            print(f"❌ Email System Error: {str(e)}")
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
@@ -138,7 +149,9 @@ def register():
             db.session.add(user)
             db.session.commit()
             
-            threading.Thread(target=send_welcome_email, args=(email, name)).start()
+            # Send Emails in a background thread to keep the UI fast
+            threading.Thread(target=send_welcome_and_admin_alert, args=(email, name)).start()
+            
             return jsonify({"success": True})
         except Exception as e:
             db.session.rollback()
@@ -168,15 +181,28 @@ def logout():
 def dashboard():
     uid = session['user_id']
     meds = Medication.query.filter_by(user_id=uid, active=True).all()
-    
-    # Show logs only for today in IST
     today_ist = datetime.now(IST).date()
     logs = AlertLog.query.filter(
         AlertLog.user_id == uid, 
         db.func.date(AlertLog.sent_at) == today_ist
     ).order_by(AlertLog.sent_at.desc()).all()
-    
     return render_template('dashboard.html', meds=meds, logs=logs)
+
+@app.route('/profile/edit', methods=['GET', 'POST'])
+@login_required
+def edit_profile():
+    user = User.query.get(session['user_id'])
+    if request.method == 'POST':
+        user.name = request.form.get('name')
+        new_pw = request.form.get('password')
+        if new_pw:
+            user.set_password(new_pw)
+        
+        db.session.commit()
+        session['user_name'] = user.name
+        flash("Profile updated successfully!", "success")
+        return redirect(url_for('dashboard'))
+    return render_template('edit_profile.html', user=user)
 
 @app.route('/medication/add', methods=['POST'])
 @login_required
@@ -197,7 +223,6 @@ def add_medication():
     flash(f'"{m.name}" scheduled successfully!', 'success')
     return redirect(url_for('dashboard'))
 
-# FIX: Added 'GET' to methods to resolve "Method Not Allowed" error
 @app.route('/medication/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_medication(id):
@@ -214,14 +239,11 @@ def edit_medication(id):
         m.recipient_email = request.form.get('recipient_email')
         m.notes = request.form.get('notes')
         m.email_enabled = 'email_enabled' in request.form
-        
         db.session.commit()
         flash("Changes saved!", "success")
         return redirect(url_for('dashboard'))
-    
     return render_template('edit_medication.html', med=m)
 
-# FIX: Added 'GET' to methods for simpler deletion handling
 @app.route('/medication/delete/<int:id>', methods=['GET', 'POST'])
 @login_required
 def delete_medication(id):
@@ -247,8 +269,8 @@ def send_email_reminder(med_id):
             body = f"Hello,\n\nIt is time to take your medication:\n\nName: {med.name}\nDosage: {med.dose}\nNotes: {med.notes}\n\nStay healthy!"
             msg.attach(MIMEText(body, 'plain'))
             
-            server = smtplib.SMTP('smtp.gmail.com', 587, timeout=20)
-            server.starttls()
+            # Switch to Port 465 (SSL)
+            server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=20)
             server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
             server.send_message(msg)
             server.quit()
@@ -256,14 +278,12 @@ def send_email_reminder(med_id):
             db.session.add(AlertLog(user_id=med.user_id, medication_name=med.name, recipient=med.recipient_email, status='sent'))
             db.session.commit()
         except Exception as e:
-            print(f"Email Fail: {e}")
             db.session.rollback()
             db.session.add(AlertLog(user_id=med.user_id, medication_name=med.name, recipient=med.recipient_email, status='failed', error=str(e)))
             db.session.commit()
 
 def check_and_send():
     with app.app_context():
-        # Get current time in IST
         now_str = datetime.now(IST).strftime('%H:%M')
         meds = Medication.query.filter_by(active=True, email_enabled=True).all()
         for m in meds:
@@ -272,7 +292,6 @@ def check_and_send():
 
 # ── Startup ───────────────────────────────────────────────────────────────────
 
-# Create tables with error logging
 with app.app_context():
     try:
         db.create_all()
@@ -280,7 +299,6 @@ with app.app_context():
     except Exception as e:
         print(f"❌ Database connection failed: {e}")
 
-# Scheduler with IST timezone
 scheduler = BackgroundScheduler(timezone=IST)
 scheduler.add_job(check_and_send, 'interval', minutes=1)
 scheduler.start()
