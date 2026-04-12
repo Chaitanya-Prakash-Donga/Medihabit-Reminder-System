@@ -4,7 +4,7 @@ import threading
 import pytz
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime, date, timedelta
+from datetime import datetime
 from functools import wraps
 
 from flask import (Flask, render_template, request,
@@ -21,12 +21,13 @@ app.secret_key = os.environ.get('SECRET_KEY', 'medihabit-super-secret-key-123')
 # Timezone Configuration (India Standard Time)
 IST = pytz.timezone('Asia/Kolkata')
 
-# Database configuration with Render PostgreSQL fix
-database_url = os.environ.get('DATABASE_URL', 'sqlite:///medihabit.db')
-if database_url and database_url.startswith("postgres://"):
-    database_url = database_url.replace("postgres://", "postgresql://", 1)
+# UPDATED: Database configuration with the official Render/SQLAlchemy fix
+uri = os.environ.get('DATABASE_URL')
+if uri and uri.startswith("postgres://"):
+    uri = uri.replace("postgres://", "postgresql://", 1)
 
-app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+# Fallback to SQLite if DATABASE_URL is not found
+app.config['SQLALCHEMY_DATABASE_URI'] = uri or 'sqlite:///medihabit.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # FIX: Keep database connection alive and prevent SSL EOF errors
@@ -40,7 +41,6 @@ db = SQLAlchemy(app)
 # ── Credentials & Admin Config ────────────────────────────────────────────────
 GMAIL_USER = os.environ.get('GMAIL_USER', '')
 GMAIL_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD', '')
-# If ADMIN_EMAIL is not set, it defaults to GMAIL_USER
 ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', GMAIL_USER)
 
 # ── Models ────────────────────────────────────────────────────────────────────
@@ -116,7 +116,7 @@ def send_welcome_and_admin_alert(user_email, user_name):
             body_admin = f"New Registration Details:\nName: {user_name}\nEmail: {user_email}\nTime: {datetime.now(IST)}"
             msg_admin.attach(MIMEText(body_admin, 'plain'))
 
-            # Using Port 465 (SSL) for reliable delivery on Render
+            # UPDATED: Using Port 465 (SSL) for reliable delivery
             server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=30)
             server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
             server.send_message(msg_user)
@@ -149,7 +149,6 @@ def register():
             db.session.add(user)
             db.session.commit()
             
-            # Send Emails in a background thread to keep the UI fast
             threading.Thread(target=send_welcome_and_admin_alert, args=(email, name)).start()
             
             return jsonify({"success": True})
@@ -269,7 +268,7 @@ def send_email_reminder(med_id):
             body = f"Hello,\n\nIt is time to take your medication:\n\nName: {med.name}\nDosage: {med.dose}\nNotes: {med.notes}\n\nStay healthy!"
             msg.attach(MIMEText(body, 'plain'))
             
-            # Switch to Port 465 (SSL)
+            # UPDATED: Using Port 465 (SSL) for reminders
             server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=20)
             server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
             server.send_message(msg)
