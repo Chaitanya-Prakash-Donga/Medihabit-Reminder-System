@@ -2,6 +2,7 @@ flask
 flask-sqlalchemy
 psycopg2-binary
 pytz
-apscheduler
+flask-apscheduler
 resend
 gunicorn
+werkzeug
