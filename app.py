@@ -3,7 +3,7 @@ import smtplib
 import threading
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from functools import wraps
 
 from flask import (Flask, render_template, request,
@@ -31,9 +31,12 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     "pool_recycle": 300,
 }
 
-# Gmail Credentials from Environment Variables
+# ── Credentials & Admin Config ────────────────────────────────────────────────
 GMAIL_USER = os.environ.get('GMAIL_USER', '')
 GMAIL_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD', '')
+
+# This line ensures it defaults to your Gmail if you don't set a separate Admin variable
+ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', GMAIL_USER)
 
 db = SQLAlchemy(app)
 
@@ -44,6 +47,7 @@ class User(db.Model):
     name = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
     medications = db.relationship('Medication', backref='user', lazy=True, cascade='all, delete-orphan')
 
     def set_password(self, pw):
@@ -90,16 +94,10 @@ def send_welcome_email(user_email, user_name):
     """Sends a thank you email after registration."""
     with app.app_context():
         try:
-            print(f"📩 Attempting to send welcome email to: {user_email}")
-            if not GMAIL_USER or not GMAIL_APP_PASSWORD:
-                print("❌ Error: Gmail credentials missing in environment variables.")
-                return
-
             msg = MIMEMultipart()
             msg['Subject'] = "Welcome to MediHabit! 💊"
             msg['From'] = f"MediHabit Team <{GMAIL_USER}>"
             msg['To'] = user_email
-            
             body = f"Hi {user_name},\n\nWelcome to MediHabit! Your account is active. You can now set medicine reminders.\n\nBest,\nThe MediHabit Team"
             msg.attach(MIMEText(body, 'plain'))
 
@@ -108,9 +106,35 @@ def send_welcome_email(user_email, user_name):
             server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
             server.send_message(msg)
             server.quit()
-            print(f"✅ SUCCESS: Welcome email sent to {user_email}")
         except Exception as e:
-            print(f"❌ SMTP ERROR: {str(e)}")
+            print(f"❌ Welcome Email Error: {str(e)}")
+
+def send_daily_admin_report():
+    """Sends a summary of new registrations to the admin email."""
+    with app.app_context():
+        try:
+            yesterday = datetime.utcnow() - timedelta(days=1)
+            new_users = User.query.filter(User.created_at >= yesterday).all()
+            total_count = User.query.count()
+
+            report_body = f"📊 Daily Report for {date.today()}\nTotal Users: {total_count}\nNew Users (24h): {len(new_users)}\n\n"
+            for u in new_users:
+                report_body += f"- {u.name} ({u.email})\n"
+
+            msg = MIMEMultipart()
+            msg['Subject'] = f"MediHabit Admin Report: {date.today()}"
+            msg['From'] = GMAIL_USER
+            msg['To'] = ADMIN_EMAIL
+            msg.attach(MIMEText(report_body, 'plain'))
+
+            server = smtplib.SMTP('smtp.gmail.com', 587, timeout=30)
+            server.starttls()
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.send_message(msg)
+            server.quit()
+            print("✅ Admin Report Sent.")
+        except Exception as e:
+            print(f"❌ Admin Report Error: {str(e)}")
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
@@ -127,8 +151,6 @@ def register():
         email = request.form.get('email').strip().lower()
         pw = request.form.get('password')
         
-        if not name or not email or not pw:
-            return jsonify({"error": "Fields missing"}), 400
         if User.query.filter_by(email=email).first():
             return jsonify({"error": "Email already registered"}), 400
         
@@ -137,7 +159,6 @@ def register():
         db.session.add(user)
         db.session.commit()
         
-        # Send email in background
         threading.Thread(target=send_welcome_email, args=(email, name)).start()
         return jsonify({"success": True})
     return render_template('register.html')
@@ -167,8 +188,6 @@ def dashboard():
     logs = AlertLog.query.filter(AlertLog.user_id == uid, db.func.date(AlertLog.sent_at) == date.today()).all()
     return render_template('dashboard.html', meds=meds, logs=logs, now=datetime.now())
 
-# ── Medication CRUD (Fixing 404 & 405 Errors) ────────────────────────────────
-
 @app.route('/medication/add', methods=['POST'])
 @login_required
 def add_medication():
@@ -188,7 +207,6 @@ def add_medication():
     flash(f'"{m.name}" added!', 'success')
     return redirect(url_for('dashboard'))
 
-# FIX: Allow GET to view the edit form and POST to save changes
 @app.route('/medication/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_medication(id):
@@ -210,7 +228,6 @@ def edit_medication(id):
         flash("Medication updated!", "success")
         return redirect(url_for('dashboard'))
     
-    # If GET, show the edit page
     return render_template('edit_medication.html', med=m)
 
 @app.route('/medication/delete/<int:id>', methods=['GET', 'POST'])
@@ -265,8 +282,9 @@ with app.app_context():
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(check_and_send, 'interval', minutes=1)
+# Sends the admin report daily at midnight
+scheduler.add_job(send_daily_admin_report, 'cron', hour=0, minute=0)
 scheduler.start()
 
 if __name__ == '__main__':
-    # use_reloader=False is required to prevent APScheduler from running twice
     app.run(debug=True, use_reloader=False)
