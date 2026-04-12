@@ -14,8 +14,13 @@
         .nav{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:60px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
         .nav-logo{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:500;text-decoration:none;color:var(--text)}
         .logo-icon{width:30px;height:30px;border-radius:8px;background:var(--info-bg);display:flex;align-items:center;justify-content:center;font-size:15px}
+        
+        /* Updated Nav User Styles */
         .nav-user{display:flex;align-items:center;gap:12px}
+        .profile-link{display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit;transition:opacity 0.2s}
+        .profile-link:hover{opacity:0.7}
         .avatar{width:32px;height:32px;border-radius:50%;background:var(--info-bg);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--info);border:1px solid var(--border)}
+        
         .page{max-width:760px;margin:0 auto;padding:1.5rem 1.25rem}
         .page-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.25rem}
         .stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:1.25rem}
@@ -69,11 +74,12 @@
         MediHabit
     </a>
     <div class="nav-user">
-        <div style="text-align: right; line-height: 1.2">
-            <div style="font-size: 13px; font-weight: 500;">{{ session.get('user_name', 'User') }}</div>
-            <a href="{{ url_for('edit_profile') }}" style="font-size: 11px; color: var(--info); text-decoration: none;">Edit Profile</a>
-        </div>
-        <div class="avatar">{{ session['user_name'][:2].upper() if session.get('user_name') else '??' }}</div>
+        <a href="{{ url_for('edit_profile') }}" class="profile-link">
+            <div style="text-align: right; line-height: 1.2">
+                <div style="font-size: 13px; font-weight: 600;">{{ session.get('user_name', 'User') }}</div>
+            </div>
+            <div class="avatar">{{ session['user_name'][:2].upper() if session.get('user_name') else '??' }}</div>
+        </a>
         <a href="/logout" class="btn btn-sm btn-danger">Log out</a>
     </div>
 </nav>
