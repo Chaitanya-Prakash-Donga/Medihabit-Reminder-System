@@ -22,8 +22,6 @@ label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
 .stat-label{font-size:11px;color:var(--muted);margin-bottom:4px}
 .stat-val{font-size:24px;font-weight:500}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1rem 1.25rem;margin-bottom:1rem}
-.card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
-.card-title{font-size:14px;font-weight:500}
 .btn{display:inline-flex;align-items:center;justify-content:center;padding:8px 16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-size:14px;font-family:inherit;cursor:pointer;text-decoration:none;transition:background .15s}
 .btn:hover{background:var(--bg)}
 .btn-primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
@@ -31,8 +29,6 @@ label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
 .btn-sm{padding:5px 11px;font-size:12px}
 .btn-info{border-color:#85B7EB;color:var(--info)}
 .btn-info:hover{background:var(--info-bg)}
-.btn-success{border-color:#C0DD97;color:var(--success)}
-.btn-success:hover{background:var(--success-bg)}
 .btn-danger{border-color:#F09595;color:var(--danger)}
 .btn-danger:hover{background:var(--danger-bg)}
 .btn-cancel{background:transparent;color:var(--muted)}
@@ -160,7 +156,7 @@ label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
                onclick="return confirm('Are you sure you want to remove {{ m.name }}?');">
                Remove
             </a>
-            </div>
+          </div>
         </div>
         {% endfor %}
       {% endif %}
@@ -189,6 +185,7 @@ label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
 </div>
 
 <script>
+// Display current date in Indian format
 document.getElementById('today').textContent = new Date().toLocaleDateString('en-IN', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
 });
@@ -204,10 +201,10 @@ function toast(msg){
     if(!t) return;
     t.textContent = msg; 
     t.style.display = 'block';
-    setTimeout(() => t.style.display = 'none', 2500);
+    setTimeout(() => { t.style.display = 'none'; }, 3000);
 }
 
-// Stats Calculation
+// Stats Calculation for Alerts Today
 let totalAlerts = 0;
 {% for m in meds %}
     totalAlerts += 1;
