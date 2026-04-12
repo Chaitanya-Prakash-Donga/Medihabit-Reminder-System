@@ -1,223 +1,235 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>MediHabit — Dashboard</title>
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#f5f5f3;--surface:#fff;--border:rgba(0,0,0,0.1);--text:#1a1a1a;--muted:#6b6b6b;--accent:#1a1a1a;--accent-fg:#fff;--info-bg:#E6F1FB;--info:#0C447C;--success-bg:#EAF3DE;--success:#27500A;--danger-bg:#FCEBEB;--danger:#791F1F;--radius:8px;--radius-lg:12px}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px;min-height:100vh}
-input,select{width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit;font-size:14px;outline:none;transition:border-color .15s}
-input:focus,select:focus{border-color:var(--accent)}
-label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
-.nav{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
-.nav-logo{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:500;text-decoration:none;color:var(--text)}
-.logo-icon{width:30px;height:30px;border-radius:8px;background:var(--info-bg);display:flex;align-items:center;justify-content:center;font-size:15px}
-.avatar{width:30px;height:30px;border-radius:50%;background:var(--info-bg);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;color:var(--info)}
-.page{max-width:760px;margin:0 auto;padding:1.5rem 1.25rem}
-.page-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.25rem}
-.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:1.25rem}
-.stat-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px}
-.stat-label{font-size:11px;color:var(--muted);margin-bottom:4px}
-.stat-val{font-size:24px;font-weight:500}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1rem 1.25rem;margin-bottom:1rem}
-.btn{display:inline-flex;align-items:center;justify-content:center;padding:8px 16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-size:14px;font-family:inherit;cursor:pointer;text-decoration:none;transition:background .15s}
-.btn:hover{background:var(--bg)}
-.btn-primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
-.btn-primary:hover{opacity:.85;background:var(--accent)}
-.btn-sm{padding:5px 11px;font-size:12px}
-.btn-info{border-color:#85B7EB;color:var(--info)}
-.btn-info:hover{background:var(--info-bg)}
-.btn-danger{border-color:#F09595;color:var(--danger)}
-.btn-danger:hover{background:var(--danger-bg)}
-.btn-cancel{background:transparent;color:var(--muted)}
-.badge{font-size:11px;font-weight:500;padding:3px 8px;border-radius:20px}
-.b-blue{background:var(--info-bg);color:var(--info)}
-.med-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
-.med-row:last-child{border-bottom:none}
-.med-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.med-body{flex:1;min-width:0}
-.med-name{font-size:14px;font-weight:500}
-.med-sub{font-size:12px;color:var(--muted);margin-top:2px}
-.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;align-items:center}
-.chip{font-size:11px;background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:2px 8px;color:var(--muted)}
-.med-acts{display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap}
-.log-row{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
-.log-row:last-child{border-bottom:none}
-.log-icon{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--info-bg);font-size:14px}
-.log-title{font-size:13px;font-weight:500}
-.log-sub{font-size:11px;color:var(--muted);margin-top:2px}
-.log-ok{font-size:11px;color:var(--success);margin-top:3px}
-.field{margin-bottom:12px}
-.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.section-label{font-size:11px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px}
-.check-row{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-bottom:8px}
-.check-row input{width:auto}
-.empty{text-align:center;padding:2rem;color:var(--muted);font-size:13px}
-.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--accent);color:var(--accent-fg);padding:10px 20px;border-radius:var(--radius);font-size:13px;display:none;white-space:nowrap;z-index:999}
-.add-form{display:none;margin-bottom:1rem}
-.add-form.open{display:block}
-</style>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+    <title>MediHabit — Dashboard</title>
+    <style>
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+        :root{--bg:#f5f5f3;--surface:#fff;--border:rgba(0,0,0,0.1);--text:#1a1a1a;--muted:#6b6b6b;--accent:#1a1a1a;--accent-fg:#fff;--info-bg:#E6F1FB;--info:#0C447C;--success-bg:#EAF3DE;--success:#27500A;--danger-bg:#FCEBEB;--danger:#791F1F;--radius:8px;--radius-lg:12px}
+        body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px;min-height:100vh}
+        input,select{width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit;font-size:14px;outline:none;transition:border-color .15s}
+        input:focus,select:focus{border-color:var(--accent)}
+        label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
+        .nav{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+        .nav-logo{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:500;text-decoration:none;color:var(--text)}
+        .logo-icon{width:30px;height:30px;border-radius:8px;background:var(--info-bg);display:flex;align-items:center;justify-content:center;font-size:15px}
+        .avatar{width:30px;height:30px;border-radius:50%;background:var(--info-bg);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;color:var(--info)}
+        .page{max-width:760px;margin:0 auto;padding:1.5rem 1.25rem}
+        .page-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.25rem}
+        .stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:1.25rem}
+        .stat-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px}
+        .stat-label{font-size:11px;color:var(--muted);margin-bottom:4px}
+        .stat-val{font-size:24px;font-weight:500}
+        .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1rem 1.25rem;margin-bottom:1rem}
+        .btn{display:inline-flex;align-items:center;justify-content:center;padding:8px 16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-size:14px;font-family:inherit;cursor:pointer;text-decoration:none;transition:background .15s}
+        .btn:hover{background:var(--bg)}
+        .btn-primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+        .btn-primary:hover{opacity:.85;background:var(--accent)}
+        .btn-sm{padding:5px 11px;font-size:12px}
+        .btn-info{border-color:#85B7EB;color:var(--info)}
+        .btn-info:hover{background:var(--info-bg)}
+        .btn-danger{border-color:#F09595;color:var(--danger)}
+        .btn-danger:hover{background:var(--danger-bg)}
+        .btn-cancel{background:transparent;color:var(--muted)}
+        .badge{font-size:11px;font-weight:500;padding:3px 8px;border-radius:20px}
+        .b-blue{background:var(--info-bg);color:var(--info)}
+        .med-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+        .med-row:last-child{border-bottom:none}
+        .med-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+        .med-body{flex:1;min-width:0}
+        .med-name{font-size:14px;font-weight:500}
+        .med-sub{font-size:12px;color:var(--muted);margin-top:2px}
+        .chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;align-items:center}
+        .chip{font-size:11px;background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:2px 8px;color:var(--muted)}
+        .med-acts{display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap}
+        .log-row{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+        .log-row:last-child{border-bottom:none}
+        .log-icon{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--info-bg);font-size:14px}
+        .log-title{font-size:13px;font-weight:500}
+        .log-sub{font-size:11px;color:var(--muted);margin-top:2px}
+        .log-ok{font-size:11px;color:var(--success);margin-top:3px}
+        .field{margin-bottom:12px}
+        .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+        .section-label{font-size:11px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px}
+        .check-row{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-bottom:8px}
+        .check-row input{width:auto}
+        .empty{text-align:center;padding:2rem;color:var(--muted);font-size:13px}
+        .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--accent);color:var(--accent-fg);padding:10px 20px;border-radius:var(--radius);display:none;white-space:nowrap;z-index:999;box-shadow: 0 4px 12px rgba(0,0,0,0.15)}
+        .add-form{display:none;margin-bottom:1rem}
+        .add-form.open{display:block}
+    </style>
 </head>
 <body>
 
 <nav class="nav">
-  <a href="/dashboard" class="nav-logo">
-    <div class="logo-icon">💊</div>
-    MediHabit
-  </a>
-  <div style="display:flex;align-items:center;gap:10px">
-    <div class="avatar">{{ session['user_name'][:2].upper() if session.get('user_name') else '??' }}</div>
-    <span style="font-size:13px;color:var(--muted)">{{ session.get('user_name', 'User') }}</span>
-    <a href="/logout" class="btn btn-sm">Log out</a>
-  </div>
+    <a href="/dashboard" class="nav-logo">
+        <div class="logo-icon">💊</div>
+        MediHabit
+    </a>
+    <div style="display:flex;align-items:center;gap:10px">
+        <div class="avatar">{{ session['user_name'][:2].upper() if session.get('user_name') else '??' }}</div>
+        <span style="font-size:13px;color:var(--muted)">{{ session.get('user_name', 'User') }}</span>
+        <a href="/logout" class="btn btn-sm">Log out</a>
+    </div>
 </nav>
 
 <div class="page">
-  <div id="toast" class="toast"></div>
+    <div id="toast" class="toast"></div>
 
-  <div class="page-header">
-    <div>
-      <h1 style="font-size:20px;font-weight:500">Dashboard</h1>
-      <p style="font-size:12px;color:var(--muted)" id="today"></p>
-    </div>
-    <button class="btn btn-primary btn-sm" onclick="toggleForm()">+ Add medication</button>
-  </div>
-
-  <div class="stat-grid">
-    <div class="stat-card">
-        <div class="stat-label">Medications</div>
-        <div class="stat-val">{{ meds|length }}</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-label">Alerts today</div>
-        <div class="stat-val" id="s-alerts">0</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-label">Sent today</div>
-        <div class="stat-val">{{ logs|length }}</div>
-    </div>
-  </div>
-
-  <div id="add-form" class="add-form">
-    <div class="section-label">New medication</div>
-    <div class="card">
-      <form action="/medication/add" method="POST">
-        <div class="field"><label>Medication name *</label><input type="text" name="name" placeholder="e.g. Metformin 500mg" required/></div>
-        <div class="row2">
-          <div class="field"><label>Dosage</label><input type="text" name="dose" placeholder="e.g. 1 tablet"/></div>
-          <div class="field"><label>Frequency</label>
-            <select name="frequency">
-                <option>Once daily</option>
-                <option>Twice daily</option>
-                <option>Three times daily</option>
-                <option>As needed</option>
-            </select>
-          </div>
+    <div class="page-header">
+        <div>
+            <h1 style="font-size:20px;font-weight:500">Dashboard</h1>
+            <p style="font-size:12px;color:var(--muted)" id="today"></p>
         </div>
-        <div class="row2">
-          <div class="field"><label>Time 1 *</label><input type="time" name="time1" value="08:00" required/></div>
-          <div class="field"><label>Time 2 (optional)</label><input type="time" name="time2"/></div>
-        </div>
-        <div class="field"><label>Recipient email *</label><input type="email" name="recipient_email" placeholder="patient@email.com" required/></div>
-        <div class="field"><label>Notes</label><input type="text" name="notes" placeholder="e.g. Take after meals"/></div>
-        <label class="check-row"><input type="checkbox" name="email_enabled" checked/> Send email reminder</label>
-        <div style="display:flex;gap:8px;margin-top:4px">
-          <button type="submit" class="btn btn-primary btn-sm">Save & schedule</button>
-          <button type="button" class="btn btn-sm btn-cancel" onclick="toggleForm()">Cancel</button>
-        </div>
-      </form>
+        <button class="btn btn-primary btn-sm" onclick="toggleForm()">+ Add medication</button>
     </div>
-  </div>
 
-  <div class="section-label">Your medications</div>
-  <div class="card" style="padding:.75rem 1.25rem">
-    <div id="med-list">
-      {% if not meds %}
-        <div class="empty">No medications yet. Click "+ Add medication" to start.</div>
-      {% else %}
-        {% for m in meds %}
-        <div class="med-row">
-          <div class="med-dot" style="background: #378ADD"></div>
-          <div class="med-body">
-            <div class="med-name">{{ m.name }}</div>
-            <div class="med-sub">{{ m.dose if m.dose else '' }} · {{ m.frequency }}</div>
-            <div class="chips">
-              <span class="chip">⏰ {{ m.time1 }}</span>
-              {% if m.time2 %}<span class="chip">⏰ {{ m.time2 }}</span>{% endif %}
-              {% if m.email_enabled %}<span class="badge b-blue">Email Alerts On</span>{% endif %}
-            </div>
-          </div>
-          <div class="med-acts">
-            <a href="{{ url_for('edit_medication', id=m.id) }}" class="btn btn-sm btn-info">Edit</a>
-            <a href="{{ url_for('delete_medication', id=m.id) }}" 
-               class="btn btn-sm btn-danger" 
-               onclick="return confirm('Are you sure you want to remove {{ m.name }}?');">
-               Remove
-            </a>
-          </div>
+    <div class="stat-grid">
+        <div class="stat-card">
+            <div class="stat-label">Total Meds</div>
+            <div class="stat-val">{{ meds|length }}</div>
         </div>
-        {% endfor %}
-      {% endif %}
+        <div class="stat-card">
+            <div class="stat-label">Expected Alerts</div>
+            <div class="stat-val" id="s-alerts">0</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Successfully Sent</div>
+            <div class="stat-val">{{ logs|length }}</div>
+        </div>
     </div>
-  </div>
 
-  <div class="section-label">Today's alert log</div>
-  <div class="card" style="padding:.75rem 1.25rem">
-    <div id="log-list">
-        {% if not logs %}
-            <div class="empty">No alerts sent yet.</div>
-        {% else %}
-            {% for log in logs %}
-            <div class="log-row">
-                <div class="log-icon">✉️</div>
-                <div>
-                    <div class="log-title">Email · {{ log.medication_name }}</div>
-                    <div class="log-sub">{{ log.recipient }} · {{ log.sent_at.strftime('%H:%M') }}</div>
-                    <div class="log-ok">{{ log.status|capitalize }}</div>
+    <div id="add-form" class="add-form">
+        <div class="section-label">New medication</div>
+        <div class="card">
+            <form action="/medication/add" method="POST">
+                <div class="field"><label>Medication name *</label><input type="text" name="name" placeholder="e.g. Paracetamol 500mg" required/></div>
+                <div class="row2">
+                    <div class="field"><label>Dosage</label><input type="text" name="dose" placeholder="e.g. 1 pill"/></div>
+                    <div class="field"><label>Frequency</label>
+                        <select name="frequency">
+                            <option>Once daily</option>
+                            <option>Twice daily</option>
+                            <option>Three times daily</option>
+                            <option>As needed</option>
+                        </select>
+                    </div>
                 </div>
-            </div>
-            {% endfor %}
-        {% endif %}
+                <div class="row2">
+                    <div class="field"><label>Time 1 *</label><input type="time" name="time1" value="08:00" required/></div>
+                    <div class="field"><label>Time 2 (optional)</label><input type="time" name="time2"/></div>
+                </div>
+                <div class="field"><label>Recipient email *</label><input type="email" name="recipient_email" placeholder="patient@example.com" required/></div>
+                <div class="field"><label>Notes</label><input type="text" name="notes" placeholder="e.g. After lunch"/></div>
+                <label class="check-row"><input type="checkbox" name="email_enabled" checked/> Enable email reminders</label>
+                <div style="display:flex;gap:8px;margin-top:10px">
+                    <button type="submit" class="btn btn-primary btn-sm">Save Medication</button>
+                    <button type="button" class="btn btn-sm btn-cancel" onclick="toggleForm()">Cancel</button>
+                </div>
+            </form>
+        </div>
     </div>
-  </div>
+
+    <div class="section-label">Active Schedule</div>
+    <div class="card" style="padding:.75rem 1.25rem">
+        <div id="med-list">
+            {% if not meds %}
+                <div class="empty">No medications scheduled. Click "+ Add medication" to begin.</div>
+            {% else %}
+                {% for m in meds %}
+                <div class="med-row">
+                    <div class="med-dot" style="background: #378ADD"></div>
+                    <div class="med-body">
+                        <div class="med-name">{{ m.name }}</div>
+                        <div class="med-sub">{{ m.dose if m.dose else '' }} · {{ m.frequency }}</div>
+                        <div class="chips">
+                            <span class="chip">⏰ {{ m.time1 }}</span>
+                            {% if m.time2 %}<span class="chip">⏰ {{ m.time2 }}</span>{% endif %}
+                            {% if m.email_enabled %}
+                                <span class="badge b-blue">Reminders On</span>
+                            {% else %}
+                                <span class="badge" style="background:#eee; color:#888">Reminders Off</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="med-acts">
+                        <a href="{{ url_for('edit_medication', id=m.id) }}" class="btn btn-sm btn-info">Edit</a>
+                        <a href="{{ url_for('delete_medication', id=m.id) }}" 
+                           class="btn btn-sm btn-danger" 
+                           onclick="return confirm('Remove {{ m.name }}?');">
+                           Delete
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="section-label">Notification History (Today)</div>
+    <div class="card" style="padding:.75rem 1.25rem">
+        <div id="log-list">
+            {% if not logs %}
+                <div class="empty">No notifications triggered yet today.</div>
+            {% else %}
+                {% for log in logs %}
+                <div class="log-row">
+                    <div class="log-icon">✉️</div>
+                    <div style="flex:1">
+                        <div class="log-title">{{ log.medication_name }}</div>
+                        <div class="log-sub">{{ log.recipient }} · Sent at {{ log.sent_at.strftime('%H:%M') }} IST</div>
+                        <div class="log-ok">
+                            {% if log.status == 'sent' %}
+                                ✓ Successfully Delivered
+                            {% else %}
+                                <span style="color:var(--danger)">⚠ {{ log.error }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% endif %}
+        </div>
+    </div>
 </div>
 
 <script>
-// Display current date in Indian format
-document.getElementById('today').textContent = new Date().toLocaleDateString('en-IN', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-});
+    // Local Date Display (Indian Format)
+    document.getElementById('today').textContent = new Date().toLocaleDateString('en-IN', {
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+    });
 
-function toggleForm(){
-    const f = document.getElementById('add-form');
-    f.classList.toggle('open');
-    if(f.classList.contains('open')) f.scrollIntoView({behavior:'smooth'});
-}
+    function toggleForm(){
+        const f = document.getElementById('add-form');
+        f.classList.toggle('open');
+        if(f.classList.contains('open')) f.scrollIntoView({behavior:'smooth'});
+    }
 
-function toast(msg){
-    const t = document.getElementById('toast');
-    if(!t) return;
-    t.textContent = msg; 
-    t.style.display = 'block';
-    setTimeout(() => { t.style.display = 'none'; }, 3000);
-}
+    function showToast(msg){
+        const t = document.getElementById('toast');
+        if(!t) return;
+        t.textContent = msg; 
+        t.style.display = 'block';
+        setTimeout(() => { t.style.display = 'none'; }, 4000);
+    }
 
-// Stats Calculation for Alerts Today
-let totalAlerts = 0;
-{% for m in meds %}
-    totalAlerts += 1;
-    {% if m.time2 %} totalAlerts += 1; {% endif %}
-{% endfor %}
-document.getElementById('s-alerts').textContent = totalAlerts;
+    // Calculate "Expected Alerts" based on enabled meds
+    let expected = 0;
+    {% for m in meds %}
+        {% if m.email_enabled %}
+            expected += 1;
+            {% if m.time2 %} expected += 1; {% endif %}
+        {% endif %}
+    {% endfor %}
+    document.getElementById('s-alerts').textContent = expected;
 
-// Flash messages from Flask
-{% with messages = get_flashed_messages() %}
-  {% if messages %}
-    toast("{{ messages[0] }}");
-  {% endif %}
-{% endwith %}
+    // Handle Flask Flash Messages
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        showToast("{{ messages[0] }}");
+      {% endif %}
+    {% endwith %}
 </script>
 </body>
 </html>
