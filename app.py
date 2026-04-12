@@ -17,17 +17,21 @@ from apscheduler.schedulers.background import BackgroundScheduler
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'medihabit-super-secret-key-123')
 
+# Database configuration with Render PostgreSQL fix
 database_url = os.environ.get('DATABASE_URL', 'sqlite:///medihabit.db')
 if database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# FIX: Keep database connection alive and prevent SSL EOF errors
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     "pool_pre_ping": True,
     "pool_recycle": 300,
 }
 
+# Gmail Credentials from Environment Variables
 GMAIL_USER = os.environ.get('GMAIL_USER', '')
 GMAIL_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD', '')
 
@@ -80,17 +84,15 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
-# ── Improved Email Function ───────────────────────────────────────────────────
+# ── Email Utility Functions ───────────────────────────────────────────────────
 
 def send_welcome_email(user_email, user_name):
     """Sends a thank you email after registration."""
-    # Logic is wrapped in app_context so it works inside a thread
     with app.app_context():
         try:
             print(f"📩 Attempting to send welcome email to: {user_email}")
-            
             if not GMAIL_USER or not GMAIL_APP_PASSWORD:
-                print("❌ Error: GMAIL_USER or GMAIL_APP_PASSWORD not set in Environment Variables")
+                print("❌ Error: Gmail credentials missing in environment variables.")
                 return
 
             msg = MIMEMultipart()
@@ -98,16 +100,14 @@ def send_welcome_email(user_email, user_name):
             msg['From'] = f"MediHabit Team <{GMAIL_USER}>"
             msg['To'] = user_email
             
-            body = f"Hi {user_name},\n\nThank you for joining MediHabit! Your account is now active. You can now log in and set your medicine reminders.\n\nBest regards,\nThe MediHabit Team"
+            body = f"Hi {user_name},\n\nWelcome to MediHabit! Your account is active. You can now set medicine reminders.\n\nBest,\nThe MediHabit Team"
             msg.attach(MIMEText(body, 'plain'))
 
-            # Setup SMTP with timeout to prevent hanging
             server = smtplib.SMTP('smtp.gmail.com', 587, timeout=30)
             server.starttls()
             server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
             server.send_message(msg)
             server.quit()
-            
             print(f"✅ SUCCESS: Welcome email sent to {user_email}")
         except Exception as e:
             print(f"❌ SMTP ERROR: {str(e)}")
@@ -129,20 +129,16 @@ def register():
         
         if not name or not email or not pw:
             return jsonify({"error": "Fields missing"}), 400
-        
         if User.query.filter_by(email=email).first():
             return jsonify({"error": "Email already registered"}), 400
         
-        # Save User to Database
-        new_user = User(name=name, email=email)
-        new_user.set_password(pw)
-        db.session.add(new_user)
+        user = User(name=name, email=email)
+        user.set_password(pw)
+        db.session.add(user)
         db.session.commit()
         
-        # Trigger Welcome Email in Background Thread
-        email_thread = threading.Thread(target=send_welcome_email, args=(email, name))
-        email_thread.start()
-        
+        # Send email in background
+        threading.Thread(target=send_welcome_email, args=(email, name)).start()
         return jsonify({"success": True})
     return render_template('register.html')
 
@@ -171,7 +167,7 @@ def dashboard():
     logs = AlertLog.query.filter(AlertLog.user_id == uid, db.func.date(AlertLog.sent_at) == date.today()).all()
     return render_template('dashboard.html', meds=meds, logs=logs, now=datetime.now())
 
-# ── Medication Edit/Delete (Fixes 404) ───────────────────────────────────────
+# ── Medication CRUD (Fixing 404 & 405 Errors) ────────────────────────────────
 
 @app.route('/medication/add', methods=['POST'])
 @login_required
@@ -192,27 +188,32 @@ def add_medication():
     flash(f'"{m.name}" added!', 'success')
     return redirect(url_for('dashboard'))
 
-@app.route('/medication/edit/<int:id>', methods=['POST'])
+# FIX: Allow GET to view the edit form and POST to save changes
+@app.route('/medication/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_medication(id):
     m = Medication.query.get_or_404(id)
     if m.user_id != session['user_id']:
         return "Unauthorized", 403
     
-    m.name = request.form.get('name')
-    m.dose = request.form.get('dose')
-    m.frequency = request.form.get('frequency')
-    m.time1 = request.form.get('time1')
-    m.time2 = request.form.get('time2') or None
-    m.recipient_email = request.form.get('recipient_email')
-    m.notes = request.form.get('notes')
-    m.email_enabled = 'email_enabled' in request.form
+    if request.method == 'POST':
+        m.name = request.form.get('name')
+        m.dose = request.form.get('dose')
+        m.frequency = request.form.get('frequency')
+        m.time1 = request.form.get('time1')
+        m.time2 = request.form.get('time2') or None
+        m.recipient_email = request.form.get('recipient_email')
+        m.notes = request.form.get('notes')
+        m.email_enabled = 'email_enabled' in request.form
+        
+        db.session.commit()
+        flash("Medication updated!", "success")
+        return redirect(url_for('dashboard'))
     
-    db.session.commit()
-    flash("Medication updated!", "success")
-    return redirect(url_for('dashboard'))
+    # If GET, show the edit page
+    return render_template('edit_medication.html', med=m)
 
-@app.route('/medication/delete/<int:id>')
+@app.route('/medication/delete/<int:id>', methods=['GET', 'POST'])
 @login_required
 def delete_medication(id):
     m = Medication.query.get_or_404(id)
@@ -223,7 +224,7 @@ def delete_medication(id):
     flash("Medication deleted.", "info")
     return redirect(url_for('dashboard'))
 
-# ── Reminder Logic ────────────────────────────────────────────────────────────
+# ── Reminder Engine ───────────────────────────────────────────────────────────
 
 def send_email_reminder(med_id):
     with app.app_context():
@@ -234,10 +235,10 @@ def send_email_reminder(med_id):
             msg['Subject'] = f"💊 Reminder: {med.name}"
             msg['From'] = GMAIL_USER
             msg['To'] = med.recipient_email
-            body = f"Hello,\n\nIt's time to take your medication: {med.name} ({med.dose}).\nNotes: {med.notes}"
+            body = f"Hello,\n\nTime to take {med.name} ({med.dose}).\nNotes: {med.notes}"
             msg.attach(MIMEText(body, 'plain'))
             
-            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server = smtplib.SMTP('smtp.gmail.com', 587, timeout=30)
             server.starttls()
             server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
             server.send_message(msg)
@@ -257,7 +258,7 @@ def check_and_send():
             if m.time1 == now or m.time2 == now:
                 threading.Thread(target=send_email_reminder, args=(m.id,), daemon=True).start()
 
-# ── Start Scheduler ───────────────────────────────────────────────────────────
+# ── Scheduler Initialization ──────────────────────────────────────────────────
 
 with app.app_context():
     db.create_all()
@@ -267,4 +268,5 @@ scheduler.add_job(check_and_send, 'interval', minutes=1)
 scheduler.start()
 
 if __name__ == '__main__':
+    # use_reloader=False is required to prevent APScheduler from running twice
     app.run(debug=True, use_reloader=False)
