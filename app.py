@@ -1,7 +1,9 @@
 import os
 import threading
 import pytz
-import resend  # Added Resend library
+import smtplib  # Replaced resend with smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from functools import wraps
 
@@ -19,10 +21,12 @@ app.secret_key = os.environ.get('SECRET_KEY', 'medihabit-super-secret-key-123')
 # Set timezone to IST
 IST = pytz.timezone('Asia/Kolkata')
 
-# Configure Resend API Key
-resend.api_key = os.environ.get('RESEND_API_KEY', '')
+# --- GMAIL CONFIGURATION ---
+GMAIL_USER = os.environ.get('GMAIL_USER', 'your-email@gmail.com')
+GMAIL_PASSWORD = os.environ.get('GMAIL_PASSWORD', 'your-app-password') # Use App Password here
+ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', GMAIL_USER)
 
-# Database configuration with Render/PostgreSQL fix
+# Database configuration
 uri = os.environ.get('DATABASE_URL')
 if uri and uri.startswith("postgres://"):
     uri = uri.replace("postgres://", "postgresql://", 1)
@@ -35,9 +39,6 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 }
 
 db = SQLAlchemy(app)
-
-# ── Credentials (Admin alerts still use this email) ───────────────────────────
-ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'your-email@example.com')
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
@@ -77,6 +78,27 @@ class AlertLog(db.Model):
     status = db.Column(db.String(20), default='sent')
     error = db.Column(db.String(300))
 
+# ── Email Helper Function (SMTP) ───────────────────────────────────────────────
+
+def send_smtp_email(to_email, subject, body):
+    """Generic helper to send emails via Gmail SMTP"""
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = GMAIL_USER
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain'))
+
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls() # Secure the connection
+        server.login(GMAIL_USER, GMAIL_PASSWORD)
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as e:
+        print(f"❌ SMTP Error: {str(e)}")
+        return False
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 @app.teardown_appcontext
@@ -92,30 +114,17 @@ def login_required(f):
     return decorated
 
 def send_welcome_and_admin_alert(user_email, user_name):
-    """Sends registration emails using Resend API"""
+    """Sends registration emails using Gmail SMTP"""
     with app.app_context():
-        try:
-            if not resend.api_key:
-                return
+        # 1. Welcome Mail to User
+        welcome_subject = "Welcome to MediHabit! 💊"
+        welcome_body = f"Hi {user_name},\n\nWelcome to MediHabit! Your account is active and you can now start tracking your medications."
+        send_smtp_email(user_email, welcome_subject, welcome_body)
 
-            # Send Welcome Email to User
-            resend.Emails.send({
-                "from": "MediHabit <onboarding@resend.dev>",
-                "to": user_email,
-                "subject": "Welcome to MediHabit! 💊",
-                "text": f"Hi {user_name},\n\nWelcome to MediHabit! Your account is active and you can now start tracking your medications."
-            })
-
-            # Send Alert to Admin
-            resend.Emails.send({
-                "from": "MediHabit <onboarding@resend.dev>",
-                "to": ADMIN_EMAIL,
-                "subject": f"New User Registered: {user_name}",
-                "text": f"User: {user_name}\nEmail: {user_email}\nJoined: {datetime.now(IST)}"
-            })
-
-        except Exception as e:
-            print(f"❌ Resend Welcome Error: {str(e)}")
+        # 2. Admin Notification
+        admin_subject = f"New User Registered: {user_name}"
+        admin_body = f"User: {user_name}\nEmail: {user_email}\nJoined: {datetime.now(IST)}"
+        send_smtp_email(ADMIN_EMAIL, admin_subject, admin_body)
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
@@ -171,24 +180,6 @@ def dashboard():
     logs = AlertLog.query.filter(AlertLog.user_id == uid, db.func.date(AlertLog.sent_at) == today_ist).order_by(AlertLog.sent_at.desc()).all()
     return render_template('dashboard.html', meds=meds, logs=logs)
 
-@app.route('/profile/edit', methods=['GET', 'POST'])
-@login_required
-def edit_profile():
-    user = User.query.get_or_404(session['user_id'])
-    
-    if request.method == 'POST':
-        user.name = request.form.get('name')
-        new_pw = request.form.get('password')
-        if new_pw:
-            user.set_password(new_pw)
-        
-        db.session.commit()
-        session['user_name'] = user.name
-        flash("Profile updated!", "success")
-        return redirect(url_for('dashboard'))
-        
-    return render_template('edit_profile.html', user=user)
-
 @app.route('/medication/add', methods=['POST'])
 @login_required
 def add_medication():
@@ -208,56 +199,24 @@ def add_medication():
     flash(f'"{m.name}" scheduled!', 'success')
     return redirect(url_for('dashboard'))
 
-@app.route('/medication/edit/<int:id>', methods=['GET', 'POST'])
-@login_required
-def edit_medication(id):
-    m = Medication.query.filter_by(id=id, user_id=session['user_id']).first_or_404()
-    
-    if request.method == 'POST':
-        m.name = request.form.get('name')
-        m.dose = request.form.get('dose')
-        m.frequency = request.form.get('frequency')
-        m.time1 = request.form.get('time1')
-        m.time2 = request.form.get('time2') or None
-        m.recipient_email = request.form.get('recipient_email')
-        m.notes = request.form.get('notes')
-        m.email_enabled = 'email_enabled' in request.form
-        db.session.commit()
-        flash("Medication updated!", "success")
-        return redirect(url_for('dashboard'))
-    return render_template('edit_medication.html', med=m)
-
-@app.route('/medication/delete/<int:id>')
-@login_required
-def delete_medication(id):
-    m = Medication.query.filter_by(id=id, user_id=session['user_id']).first_or_404()
-    db.session.delete(m)
-    db.session.commit()
-    flash("Medication removed.", "info")
-    return redirect(url_for('dashboard'))
-
 # ── Reminder Engine ───────────────────────────────────────────────────────────
 
 def send_email_reminder(med_id):
-    """Sends scheduled reminders using Resend API"""
+    """Sends scheduled reminders using Gmail SMTP"""
     with app.app_context():
         med = Medication.query.get(med_id)
         if not med or not med.email_enabled:
             return
             
-        try:
-            resend.Emails.send({
-                "from": "MediHabit <onboarding@resend.dev>",
-                "to": med.recipient_email,
-                "subject": f"💊 Time for {med.name}",
-                "text": f"Hello,\n\nIt is time for your medication: {med.name}\nDosage: {med.dose}\nNotes: {med.notes}"
-            })
-            
-            db.session.add(AlertLog(user_id=med.user_id, medication_name=med.name, recipient=med.recipient_email, status='sent'))
-        except Exception as e:
-            db.session.rollback()
-            db.session.add(AlertLog(user_id=med.user_id, medication_name=med.name, recipient=med.recipient_email, status='failed', error=str(e)))
+        subject = f"💊 Time for {med.name}"
+        body = f"Hello,\n\nIt is time for your medication: {med.name}\nDosage: {med.dose}\nNotes: {med.notes}"
         
+        success = send_smtp_email(med.recipient_email, subject, body)
+        
+        status = 'sent' if success else 'failed'
+        error_msg = None if success else "SMTP Connection Failed"
+        
+        db.session.add(AlertLog(user_id=med.user_id, medication_name=med.name, recipient=med.recipient_email, status=status, error=error_msg))
         db.session.commit()
 
 def check_and_send():
