@@ -178,16 +178,20 @@ def dashboard():
 @app.route('/profile/edit', methods=['GET', 'POST'])
 @login_required
 def edit_profile():
-    # Robust fetching to prevent 500 errors
+    # Correct way to fetch user by ID with filtering to prevent 500 errors
     user = User.query.filter_by(id=session['user_id']).first_or_404()
+    
     if request.method == 'POST':
         user.name = request.form.get('name')
         if request.form.get('password'):
             user.set_password(request.form.get('password'))
         db.session.commit()
+        
+        # Update session name so the dashboard reflects the change immediately
         session['user_name'] = user.name
-        flash("Profile updated!", "success")
+        flash("Profile updated successfully!", "success")
         return redirect(url_for('dashboard'))
+        
     return render_template('edit_profile.html', user=user)
 
 @app.route('/medication/add', methods=['POST'])
