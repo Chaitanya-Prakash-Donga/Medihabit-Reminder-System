@@ -1,9 +1,7 @@
 import os
-import smtplib
 import threading
 import pytz
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import resend  # Added Resend library
 from datetime import datetime
 from functools import wraps
 
@@ -21,6 +19,9 @@ app.secret_key = os.environ.get('SECRET_KEY', 'medihabit-super-secret-key-123')
 # Set timezone to IST
 IST = pytz.timezone('Asia/Kolkata')
 
+# Configure Resend API Key
+resend.api_key = os.environ.get('RESEND_API_KEY', '')
+
 # Database configuration with Render/PostgreSQL fix
 uri = os.environ.get('DATABASE_URL')
 if uri and uri.startswith("postgres://"):
@@ -35,10 +36,8 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 
 db = SQLAlchemy(app)
 
-# ── Credentials ───────────────────────────────────────────────────────────────
-GMAIL_USER = os.environ.get('GMAIL_USER', '')
-GMAIL_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD', '')
-ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', GMAIL_USER)
+# ── Credentials (Admin alerts still use this email) ───────────────────────────
+ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'your-email@example.com')
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
@@ -93,33 +92,30 @@ def login_required(f):
     return decorated
 
 def send_welcome_and_admin_alert(user_email, user_name):
+    """Sends registration emails using Resend API"""
     with app.app_context():
         try:
-            if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+            if not resend.api_key:
                 return
 
-            server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=15)
-            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            # Send Welcome Email to User
+            resend.Emails.send({
+                "from": "MediHabit <onboarding@resend.dev>",
+                "to": user_email,
+                "subject": "Welcome to MediHabit! 💊",
+                "text": f"Hi {user_name},\n\nWelcome to MediHabit! Your account is active and you can now start tracking your medications."
+            })
 
-            # Welcome Email
-            msg_user = MIMEMultipart()
-            msg_user['Subject'] = "Welcome to MediHabit! 💊"
-            msg_user['From'] = f"MediHabit <{GMAIL_USER}>"
-            msg_user['To'] = user_email
-            msg_user.attach(MIMEText(f"Hi {user_name},\n\nWelcome to MediHabit! Your account is active and you can now start tracking your medications.", 'plain'))
-            server.send_message(msg_user)
+            # Send Alert to Admin
+            resend.Emails.send({
+                "from": "MediHabit <onboarding@resend.dev>",
+                "to": ADMIN_EMAIL,
+                "subject": f"New User Registered: {user_name}",
+                "text": f"User: {user_name}\nEmail: {user_email}\nJoined: {datetime.now(IST)}"
+            })
 
-            # Admin Alert
-            msg_admin = MIMEMultipart()
-            msg_admin['Subject'] = f"New User: {user_name}"
-            msg_admin['From'] = GMAIL_USER
-            msg_admin['To'] = ADMIN_EMAIL
-            msg_admin.attach(MIMEText(f"User: {user_name}\nEmail: {user_email}\nJoined: {datetime.now(IST)}", 'plain'))
-            server.send_message(msg_admin)
-
-            server.quit()
         except Exception as e:
-            print(f"❌ Email Thread Error: {str(e)}")
+            print(f"❌ Resend Welcome Error: {str(e)}")
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
@@ -178,18 +174,17 @@ def dashboard():
 @app.route('/profile/edit', methods=['GET', 'POST'])
 @login_required
 def edit_profile():
-    # Correct way to fetch user by ID with filtering to prevent 500 errors
-    user = User.query.filter_by(id=session['user_id']).first_or_404()
+    user = User.query.get_or_404(session['user_id'])
     
     if request.method == 'POST':
         user.name = request.form.get('name')
-        if request.form.get('password'):
-            user.set_password(request.form.get('password'))
-        db.session.commit()
+        new_pw = request.form.get('password')
+        if new_pw:
+            user.set_password(new_pw)
         
-        # Update session name so the dashboard reflects the change immediately
+        db.session.commit()
         session['user_name'] = user.name
-        flash("Profile updated successfully!", "success")
+        flash("Profile updated!", "success")
         return redirect(url_for('dashboard'))
         
     return render_template('edit_profile.html', user=user)
@@ -216,7 +211,6 @@ def add_medication():
 @app.route('/medication/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_medication(id):
-    # Strict filtering: Only find medicine belonging to the current user
     m = Medication.query.filter_by(id=id, user_id=session['user_id']).first_or_404()
     
     if request.method == 'POST':
@@ -245,26 +239,25 @@ def delete_medication(id):
 # ── Reminder Engine ───────────────────────────────────────────────────────────
 
 def send_email_reminder(med_id):
+    """Sends scheduled reminders using Resend API"""
     with app.app_context():
         med = Medication.query.get(med_id)
-        if not med or not med.email_enabled: return
-        try:
-            msg = MIMEMultipart()
-            msg['Subject'] = f"💊 Time for {med.name}"
-            msg['From'] = GMAIL_USER
-            msg['To'] = med.recipient_email
-            body = f"Hello,\n\nIt is time for your medication: {med.name}\nDosage: {med.dose}\nNotes: {med.notes}"
-            msg.attach(MIMEText(body, 'plain'))
+        if not med or not med.email_enabled:
+            return
             
-            server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=20)
-            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-            server.send_message(msg)
-            server.quit()
+        try:
+            resend.Emails.send({
+                "from": "MediHabit <onboarding@resend.dev>",
+                "to": med.recipient_email,
+                "subject": f"💊 Time for {med.name}",
+                "text": f"Hello,\n\nIt is time for your medication: {med.name}\nDosage: {med.dose}\nNotes: {med.notes}"
+            })
             
             db.session.add(AlertLog(user_id=med.user_id, medication_name=med.name, recipient=med.recipient_email, status='sent'))
         except Exception as e:
             db.session.rollback()
             db.session.add(AlertLog(user_id=med.user_id, medication_name=med.name, recipient=med.recipient_email, status='failed', error=str(e)))
+        
         db.session.commit()
 
 def check_and_send():
@@ -285,5 +278,4 @@ scheduler.add_job(check_and_send, 'interval', minutes=1)
 scheduler.start()
 
 if __name__ == '__main__':
-    # use_reloader=False prevents the scheduler from starting twice
     app.run(debug=True, use_reloader=False)
