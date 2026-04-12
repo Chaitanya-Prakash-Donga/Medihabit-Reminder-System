@@ -142,7 +142,7 @@ def register():
             return jsonify({"success": True})
         except Exception as e:
             db.session.rollback()
-            return jsonify({"error": "Database error. Please try again."}), 500
+            return jsonify({"error": f"Database error: {str(e)}"}), 500
     return render_template('register.html')
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -197,6 +197,7 @@ def add_medication():
     flash(f'"{m.name}" scheduled successfully!', 'success')
     return redirect(url_for('dashboard'))
 
+# FIX: Added 'GET' to methods to resolve "Method Not Allowed" error
 @app.route('/medication/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_medication(id):
@@ -220,6 +221,7 @@ def edit_medication(id):
     
     return render_template('edit_medication.html', med=m)
 
+# FIX: Added 'GET' to methods for simpler deletion handling
 @app.route('/medication/delete/<int:id>', methods=['GET', 'POST'])
 @login_required
 def delete_medication(id):
@@ -270,8 +272,13 @@ def check_and_send():
 
 # ── Startup ───────────────────────────────────────────────────────────────────
 
+# Create tables with error logging
 with app.app_context():
-    db.create_all()
+    try:
+        db.create_all()
+        print("✅ Database connection successful and tables created.")
+    except Exception as e:
+        print(f"❌ Database connection failed: {e}")
 
 # Scheduler with IST timezone
 scheduler = BackgroundScheduler(timezone=IST)
