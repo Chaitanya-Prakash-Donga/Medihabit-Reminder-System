@@ -18,19 +18,16 @@ from apscheduler.schedulers.background import BackgroundScheduler
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'medihabit-super-secret-key-123')
 
-# Timezone Configuration (India Standard Time)
+# Set timezone to IST
 IST = pytz.timezone('Asia/Kolkata')
 
-# UPDATED: Database configuration with the official Render/SQLAlchemy fix
+# Database configuration with Render/PostgreSQL fix
 uri = os.environ.get('DATABASE_URL')
 if uri and uri.startswith("postgres://"):
     uri = uri.replace("postgres://", "postgresql://", 1)
 
-# Fallback to SQLite if DATABASE_URL is not found
 app.config['SQLALCHEMY_DATABASE_URI'] = uri or 'sqlite:///medihabit.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# FIX: Keep database connection alive and prevent SSL EOF errors
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     "pool_pre_ping": True,
     "pool_recycle": 280,
@@ -38,7 +35,7 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 
 db = SQLAlchemy(app)
 
-# ── Credentials & Admin Config ────────────────────────────────────────────────
+# ── Credentials ───────────────────────────────────────────────────────────────
 GMAIL_USER = os.environ.get('GMAIL_USER', '')
 GMAIL_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD', '')
 ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', GMAIL_USER)
@@ -81,7 +78,7 @@ class AlertLog(db.Model):
     status = db.Column(db.String(20), default='sent')
     error = db.Column(db.String(300))
 
-# ── Helpers & Decorators ──────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 @app.teardown_appcontext
 def shutdown_session(exception=None):
@@ -95,43 +92,40 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
-# ── Email Utility Functions ───────────────────────────────────────────────────
-
 def send_welcome_and_admin_alert(user_email, user_name):
     with app.app_context():
         try:
-            # 1. Welcome Email to User
+            if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+                return
+
+            server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=15)
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+
+            # Welcome Email
             msg_user = MIMEMultipart()
             msg_user['Subject'] = "Welcome to MediHabit! 💊"
-            msg_user['From'] = f"MediHabit Team <{GMAIL_USER}>"
+            msg_user['From'] = f"MediHabit <{GMAIL_USER}>"
             msg_user['To'] = user_email
-            body_user = f"Hi {user_name},\n\nWelcome to MediHabit! Your account is active.\n\nBest,\nMediHabit Team"
-            msg_user.attach(MIMEText(body_user, 'plain'))
+            msg_user.attach(MIMEText(f"Hi {user_name},\n\nWelcome to MediHabit! Your account is active and you can now start tracking your medications.", 'plain'))
+            server.send_message(msg_user)
 
-            # 2. Alert to Admin (New registration notification)
+            # Admin Alert
             msg_admin = MIMEMultipart()
-            msg_admin['Subject'] = f"New User Registered: {user_name}"
+            msg_admin['Subject'] = f"New User: {user_name}"
             msg_admin['From'] = GMAIL_USER
             msg_admin['To'] = ADMIN_EMAIL
-            body_admin = f"New Registration Details:\nName: {user_name}\nEmail: {user_email}\nTime: {datetime.now(IST)}"
-            msg_admin.attach(MIMEText(body_admin, 'plain'))
-
-            # UPDATED: Using Port 465 (SSL) for reliable delivery
-            server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=30)
-            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-            server.send_message(msg_user)
+            msg_admin.attach(MIMEText(f"User: {user_name}\nEmail: {user_email}\nJoined: {datetime.now(IST)}", 'plain'))
             server.send_message(msg_admin)
+
             server.quit()
         except Exception as e:
-            print(f"❌ Email System Error: {str(e)}")
+            print(f"❌ Email Thread Error: {str(e)}")
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.route('/')
 def index():
-    if 'user_id' in session:
-        return redirect(url_for('dashboard'))
-    return redirect(url_for('login'))
+    return redirect(url_for('dashboard')) if 'user_id' in session else redirect(url_for('login'))
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -150,22 +144,19 @@ def register():
             db.session.commit()
             
             threading.Thread(target=send_welcome_and_admin_alert, args=(email, name)).start()
-            
             return jsonify({"success": True})
         except Exception as e:
             db.session.rollback()
-            return jsonify({"error": f"Database error: {str(e)}"}), 500
+            return jsonify({"error": str(e)}), 500
     return render_template('register.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        email = request.form.get('email').strip().lower()
-        pw = request.form.get('password')
+        email, pw = request.form.get('email').strip().lower(), request.form.get('password')
         user = User.query.filter_by(email=email).first()
         if user and user.check_password(pw):
-            session['user_id'] = user.id
-            session['user_name'] = user.name
+            session.update({'user_id': user.id, 'user_name': user.name})
             return jsonify({"success": True})
         return jsonify({"error": "Invalid credentials"}), 401
     return render_template('login.html')
@@ -181,25 +172,21 @@ def dashboard():
     uid = session['user_id']
     meds = Medication.query.filter_by(user_id=uid, active=True).all()
     today_ist = datetime.now(IST).date()
-    logs = AlertLog.query.filter(
-        AlertLog.user_id == uid, 
-        db.func.date(AlertLog.sent_at) == today_ist
-    ).order_by(AlertLog.sent_at.desc()).all()
+    logs = AlertLog.query.filter(AlertLog.user_id == uid, db.func.date(AlertLog.sent_at) == today_ist).order_by(AlertLog.sent_at.desc()).all()
     return render_template('dashboard.html', meds=meds, logs=logs)
 
 @app.route('/profile/edit', methods=['GET', 'POST'])
 @login_required
 def edit_profile():
-    user = User.query.get(session['user_id'])
+    # Robust fetching to prevent 500 errors
+    user = User.query.filter_by(id=session['user_id']).first_or_404()
     if request.method == 'POST':
         user.name = request.form.get('name')
-        new_pw = request.form.get('password')
-        if new_pw:
-            user.set_password(new_pw)
-        
+        if request.form.get('password'):
+            user.set_password(request.form.get('password'))
         db.session.commit()
         session['user_name'] = user.name
-        flash("Profile updated successfully!", "success")
+        flash("Profile updated!", "success")
         return redirect(url_for('dashboard'))
     return render_template('edit_profile.html', user=user)
 
@@ -219,15 +206,14 @@ def add_medication():
     )
     db.session.add(m)
     db.session.commit()
-    flash(f'"{m.name}" scheduled successfully!', 'success')
+    flash(f'"{m.name}" scheduled!', 'success')
     return redirect(url_for('dashboard'))
 
 @app.route('/medication/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_medication(id):
-    m = Medication.query.get_or_404(id)
-    if m.user_id != session['user_id']:
-        return "Unauthorized", 403
+    # Strict filtering: Only find medicine belonging to the current user
+    m = Medication.query.filter_by(id=id, user_id=session['user_id']).first_or_404()
     
     if request.method == 'POST':
         m.name = request.form.get('name')
@@ -239,16 +225,14 @@ def edit_medication(id):
         m.notes = request.form.get('notes')
         m.email_enabled = 'email_enabled' in request.form
         db.session.commit()
-        flash("Changes saved!", "success")
+        flash("Medication updated!", "success")
         return redirect(url_for('dashboard'))
     return render_template('edit_medication.html', med=m)
 
-@app.route('/medication/delete/<int:id>', methods=['GET', 'POST'])
+@app.route('/medication/delete/<int:id>')
 @login_required
 def delete_medication(id):
-    m = Medication.query.get_or_404(id)
-    if m.user_id != session['user_id']:
-        return "Unauthorized", 403
+    m = Medication.query.filter_by(id=id, user_id=session['user_id']).first_or_404()
     db.session.delete(m)
     db.session.commit()
     flash("Medication removed.", "info")
@@ -263,23 +247,21 @@ def send_email_reminder(med_id):
         try:
             msg = MIMEMultipart()
             msg['Subject'] = f"💊 Time for {med.name}"
-            msg['From'] = f"MediHabit <{GMAIL_USER}>"
+            msg['From'] = GMAIL_USER
             msg['To'] = med.recipient_email
-            body = f"Hello,\n\nIt is time to take your medication:\n\nName: {med.name}\nDosage: {med.dose}\nNotes: {med.notes}\n\nStay healthy!"
+            body = f"Hello,\n\nIt is time for your medication: {med.name}\nDosage: {med.dose}\nNotes: {med.notes}"
             msg.attach(MIMEText(body, 'plain'))
             
-            # UPDATED: Using Port 465 (SSL) for reminders
             server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=20)
             server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
             server.send_message(msg)
             server.quit()
             
             db.session.add(AlertLog(user_id=med.user_id, medication_name=med.name, recipient=med.recipient_email, status='sent'))
-            db.session.commit()
         except Exception as e:
             db.session.rollback()
             db.session.add(AlertLog(user_id=med.user_id, medication_name=med.name, recipient=med.recipient_email, status='failed', error=str(e)))
-            db.session.commit()
+        db.session.commit()
 
 def check_and_send():
     with app.app_context():
@@ -292,15 +274,12 @@ def check_and_send():
 # ── Startup ───────────────────────────────────────────────────────────────────
 
 with app.app_context():
-    try:
-        db.create_all()
-        print("✅ Database connection successful and tables created.")
-    except Exception as e:
-        print(f"❌ Database connection failed: {e}")
+    db.create_all()
 
 scheduler = BackgroundScheduler(timezone=IST)
 scheduler.add_job(check_and_send, 'interval', minutes=1)
 scheduler.start()
 
 if __name__ == '__main__':
+    # use_reloader=False prevents the scheduler from starting twice
     app.run(debug=True, use_reloader=False)
