@@ -1,7 +1,7 @@
 import os
 import threading
 import pytz
-import smtplib  # Replaced resend with smtplib
+import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
@@ -22,11 +22,12 @@ app.secret_key = os.environ.get('SECRET_KEY', 'medihabit-super-secret-key-123')
 IST = pytz.timezone('Asia/Kolkata')
 
 # --- GMAIL CONFIGURATION ---
-GMAIL_USER = os.environ.get('GMAIL_USER', 'your-email@gmail.com')
-GMAIL_PASSWORD = os.environ.get('GMAIL_PASSWORD', 'your-app-password') # Use App Password here
+# These match your Render Environment Variables exactly
+GMAIL_USER = os.environ.get('GMAIL_USER')
+GMAIL_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD')  # Updated to match your Render key
 ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', GMAIL_USER)
 
-# Database configuration
+# Database configuration with Render/PostgreSQL fix
 uri = os.environ.get('DATABASE_URL')
 if uri and uri.startswith("postgres://"):
     uri = uri.replace("postgres://", "postgresql://", 1)
@@ -82,6 +83,10 @@ class AlertLog(db.Model):
 
 def send_smtp_email(to_email, subject, body):
     """Generic helper to send emails via Gmail SMTP"""
+    if not GMAIL_USER or not GMAIL_PASSWORD:
+        print("❌ SMTP Error: Missing GMAIL_USER or GMAIL_APP_PASSWORD environment variables.")
+        return False
+        
     try:
         msg = MIMEMultipart()
         msg['From'] = GMAIL_USER
@@ -90,7 +95,7 @@ def send_smtp_email(to_email, subject, body):
         msg.attach(MIMEText(body, 'plain'))
 
         server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls() # Secure the connection
+        server.starttls()
         server.login(GMAIL_USER, GMAIL_PASSWORD)
         server.send_message(msg)
         server.quit()
