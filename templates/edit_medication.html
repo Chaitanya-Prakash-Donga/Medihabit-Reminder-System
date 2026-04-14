@@ -1,95 +1,84 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>MediHabit — Edit Medication</title>
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#f5f5f3;--surface:#fff;--border:rgba(0,0,0,0.1);--text:#1a1a1a;--muted:#6b6b6b;--accent:#1a1a1a;--accent-fg:#fff;--info-bg:#E6F1FB;--info:#0C447C;--success-bg:#EAF3DE;--success:#27500A;--radius:8px;--radius-lg:12px}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px;min-height:100vh}
-input,select{width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit;font-size:14px;outline:none;transition:border-color .15s}
-input:focus,select:focus{border-color:var(--accent)}
-label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
-.nav{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
-.nav-logo{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:500;text-decoration:none;color:var(--text)}
-.logo-icon{width:30px;height:30px;border-radius:8px;background:var(--info-bg);display:flex;align-items:center;justify-content:center;font-size:15px}
-.avatar{width:30px;height:30px;border-radius:50%;background:var(--info-bg);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;color:var(--info)}
-.page{max-width:600px;margin:0 auto;padding:1.5rem 1.25rem}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.25rem;margin-bottom:1rem}
-.btn{display:inline-flex;align-items:center;justify-content:center;padding:8px 18px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-size:14px;font-family:inherit;cursor:pointer;text-decoration:none;transition:background .15s}
-.btn:hover{background:var(--bg)}
-.btn-primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
-.btn-primary:hover{opacity:.85;background:var(--accent)}
-.btn-sm{padding:5px 11px;font-size:12px}
-.field{margin-bottom:12px}
-.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.check-row{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-bottom:10px}
-.check-row input{width:auto}
-.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--accent);color:var(--accent-fg);padding:10px 20px;border-radius:var(--radius);font-size:13px;display:none;white-space:nowrap;z-index:999}
-@media(max-width:520px){.row2{grid-template-columns:1fr}.page{padding:1rem .75rem}}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Medication — MediHabit</title>
+    <style>
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+        :root{--bg:#f5f5f3;--surface:#fff;--border:rgba(0,0,0,0.1);--text:#1a1a1a;--muted:#6b6b6b;--accent:#1a1a1a;--accent-fg:#fff;--danger-bg:#FCEBEB;--danger:#791F1F;--success-bg:#E6F4EA;--success:#137333;--radius:8px;--radius-lg:12px}
+        body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);padding:2rem 1rem;min-height:100vh;display:flex;align-items:center;justify-content:center}
+        .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.5rem;width:100%;max-width:450px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1)}
+        .field{margin-bottom:16px}
+        label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.025em}
+        input, select, textarea{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;font-family:inherit;outline:none;transition:border-color .15s}
+        input:focus, textarea:focus{border-color:var(--accent)}
+        .btn-group{margin-top:24px;display:flex;flex-direction:column;gap:10px}
+        .btn{display:inline-flex;align-items:center;justify-content:center;padding:12px;background:var(--accent);color:var(--accent-fg);border:none;border-radius:var(--radius);font-weight:500;font-size:14px;cursor:pointer;text-decoration:none;transition:opacity .15s}
+        .btn:hover{opacity:0.9}
+        .btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border)}
+        .btn-ghost:hover{background:var(--bg);color:var(--text)}
+        .flash{padding:10px 14px;border-radius:var(--radius);margin-bottom:1.5rem;font-size:14px}
+        .flash-danger{background:var(--danger-bg);color:var(--danger)}
+        .flash-success{background:var(--success-bg);color:var(--success)}
+        h2{font-size:20px;font-weight:600;margin-bottom:1.5rem;text-align:center}
+    </style>
 </head>
 <body>
 
-<nav class="nav">
-  <a href="dashboard.html" class="nav-logo">
-    <div class="logo-icon">💊</div>
-    MediHabit
-  </a>
-  <div style="display:flex;align-items:center;gap:10px">
-    <div class="avatar">RK</div>
-    <span style="font-size:13px;color:var(--muted)">Ravi Kumar</span>
-    <a href="login.html" class="btn btn-sm">Log out</a>
-  </div>
-</nav>
+<div class="card">
+    <h2>Update Medication</h2>
 
-<div class="page">
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:1.25rem">
-    <a href="dashboard.html" class="btn btn-sm">← Back</a>
-    <h1 style="font-size:20px;font-weight:500">Edit medication</h1>
-  </div>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    
+    <form action="{{ url_for('edit_medication', id=med.id) }}" method="POST">
+        <div class="field">
+            <label>Medication Name</label>
+            <input type="text" name="name" value="{{ med.name }}" placeholder="e.g. Paracetamol" required>
+        </div>
+        
+        <div class="field">
+            <label>Dose / Strength</label>
+            <input type="text" name="dose" value="{{ med.dose }}" placeholder="e.g. 500mg or 1 Tablet">
+        </div>
 
-  <div class="card">
-    <div class="field"><label>Medication name *</label><input type="text" id="name" value="Metformin 500mg"/></div>
-    <div class="row2">
-      <div class="field"><label>Dosage</label><input type="text" id="dose" value="1 tablet"/></div>
-      <div class="field"><label>Frequency</label>
-        <select id="freq">
-          <option>Once daily</option><option selected>Twice daily</option>
-          <option>Three times daily</option><option>As needed</option>
-        </select>
-      </div>
-    </div>
-    <div class="row2">
-      <div class="field"><label>Reminder time 1 *</label><input type="time" id="t1" value="08:00"/></div>
-      <div class="field"><label>Reminder time 2 (optional)</label><input type="time" id="t2" value="20:00"/></div>
-    </div>
-    <div class="field"><label>Recipient email *</label><input type="email" id="email" value="ravi@email.com"/></div>
-    <div class="field"><label>Notes</label><input type="text" id="notes" value="After meals"/></div>
-    <label class="check-row"><input type="checkbox" id="email-on" checked/> Send email reminder</label>
-    <div style="display:flex;gap:8px;margin-top:4px">
-      <button class="btn btn-primary" onclick="save()">Save changes</button>
-      <a href="dashboard.html" class="btn">Cancel</a>
-    </div>
-  </div>
+        <div class="field">
+            <label>Primary Reminder Time</label>
+            <input type="time" name="time1" value="{{ med.time1 }}" required>
+        </div>
+
+        <div class="field">
+            <label>Secondary Time (Optional)</label>
+            <input type="time" name="time2" value="{{ med.time2 if med.time2 else '' }}">
+        </div>
+
+        <div class="field">
+            <label>Recipient Email</label>
+            <input type="email" name="recipient_email" value="{{ med.recipient_email }}" required>
+        </div>
+
+        <div class="field">
+            <label>Notes</label>
+            <textarea name="notes" rows="3" placeholder="Special instructions...">{{ med.notes }}</textarea>
+        </div>
+
+        <div class="field" style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" name="email_enabled" id="email_enabled" style="width:auto" {% if med.email_enabled %}checked{% endif %}>
+            <label for="email_enabled" style="margin-bottom:0">Enable Email Alerts</label>
+        </div>
+
+        <div class="btn-group">
+            <button type="submit" class="btn">Save Changes</button>
+            <a href="{{ url_for('dashboard') }}" class="btn btn-ghost">Discard & Go Back</a>
+        </div>
+    </form>
 </div>
 
-<div id="toast" class="toast"></div>
-
-<script>
-function save(){
-  const name=document.getElementById('name').value.trim();
-  const email=document.getElementById('email').value.trim();
-  if(!name||!email){showToast('Name and email are required.');return;}
-  showToast('Medication updated!');
-  setTimeout(()=>window.location.href='dashboard.html',1200);
-}
-function showToast(msg){
-  const t=document.getElementById('toast');
-  t.textContent=msg;t.style.display='block';
-  setTimeout(()=>t.style.display='none',2500);
-}
-</script>
 </body>
 </html>
