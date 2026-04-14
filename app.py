@@ -16,6 +16,7 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'medihabit-super-secret-key-123')
 IST = pytz.timezone('Asia/Kolkata')
 
+# Render uses 'postgres://', but SQLAlchemy requires 'postgresql://'
 uri = os.environ.get('DATABASE_URL')
 if uri and uri.startswith("postgres://"):
     uri = uri.replace("postgres://", "postgresql://", 1)
@@ -26,14 +27,10 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"pool_pre_ping": True, "pool_recycle"
 
 db = SQLAlchemy(app)
 
-# ── Resend API Email Logic (Updated) ──────────────────────────────────────────
+# ── Resend API Email Logic ───────────────────────────────────────────────────
 resend.api_key = os.environ.get('RESEND_API_KEY')
 
 def send_smtp_email(to_email, subject, body):
-    """
-    Using Resend API to bypass Render's SMTP port restrictions.
-    Note: 'from' must be 'onboarding@resend.dev' for free accounts.
-    """
     if not resend.api_key:
         print("❌ Error: RESEND_API_KEY not set in Environment Variables")
         return False
@@ -101,7 +98,9 @@ def login_required(f):
 # ── Routes ────────────────────────────────────────────────────────────────────
 @app.route('/')
 def index():
-    return redirect(url_for('dashboard')) if 'user_id' in session else redirect(url_for('login'))
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    return redirect(url_for('login'))
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -276,9 +275,11 @@ def check_and_send():
 with app.app_context():
     db.create_all()
 
-scheduler = BackgroundScheduler(timezone=IST)
-scheduler.add_job(check_and_send, 'interval', minutes=1)
-scheduler.start()
+# Logic to prevent scheduler from starting twice in debug mode
+if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+    scheduler = BackgroundScheduler(timezone=IST)
+    scheduler.add_job(check_and_send, 'interval', minutes=1)
+    scheduler.start()
 
 if __name__ == '__main__':
-    app.run(debug=True, use_reloader=False)
+    app.run(debug=True)
