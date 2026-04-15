@@ -48,6 +48,7 @@
         .empty{text-align:center;padding:2rem;color:var(--muted);font-size:13px}
         .alert { padding: 10px; border-radius: 8px; margin-bottom: 1rem; font-size: 13px; text-align: center; }
         .alert-success { background: var(--success-bg); color: var(--success); }
+        .alert-danger { background: var(--danger-bg); color: var(--danger); }
     </style>
 </head>
 <body>
@@ -86,7 +87,7 @@
   <div class="stat-grid">
     <div class="stat-card"><div class="stat-label">Medications</div><div class="stat-val">{{ meds|length }}</div></div>
     <div class="stat-card"><div class="stat-label">Alerts today</div><div class="stat-val">{{ meds|length }}</div></div>
-    <div class="stat-card"><div class="stat-label">Sent today</div><div class="stat-val">{{ logs|length }}</div></div>
+    <div class="stat-card"><div class="stat-label">Logs</div><div class="stat-val">{{ logs|length }}</div></div>
   </div>
 
   <div id="add-form" class="add-form">
@@ -141,7 +142,7 @@
     {% endif %}
   </div>
 
-  <div class="section-label">Today's alert log</div>
+  <div class="section-label">Recent alerts</div>
   <div class="card">
     {% if not logs %}
         <div class="empty">No alerts sent yet.</div>
@@ -152,7 +153,9 @@
           <div>
             <div class="log-title">{{ log.medication_name }}</div>
             <div class="log-sub">{{ log.recipient }} · {{ log.sent_at.strftime('%H:%M') }}</div>
-            <div style="font-size:11px; color:var(--success)">Status: {{ log.status }}</div>
+            <div style="font-size:11px; color: {% if log.status == 'sent' %}var(--success){% else %}var(--danger){% endif %}">
+                Status: {{ log.status|capitalize }}
+            </div>
           </div>
         </div>
         {% endfor %}
@@ -165,53 +168,36 @@ function toggleForm(){
   document.getElementById('add-form').classList.toggle('open');
 }
 
-// --- VOICE & MAIL ALERT LOGIC ---
-let lastAlertTime = ""; // To prevent multiple alerts in the same minute
+// --- VOICE ALERT LOGIC ---
+let lastAlertTime = ""; 
 
-function checkTimeAndAlert() {
+function checkTimeAndVoiceAlert() {
     const now = new Date();
-    // Format to HH:MM
-    const currentTime = now.getHours().toString().padStart(2, '0') + ":" + 
-                        now.getMinutes().toString().padStart(2, '0');
+    // Use Intl to ensure we match the Asia/Kolkata time if browser is set differently
+    const currentTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
 
-    // Prevent re-triggering if we already handled this minute
     if (currentTime === lastAlertTime) return;
 
-    // Convert Flask 'meds' data to a JavaScript array
-    const userReminders = {{ meds|tojson }}; 
+    // Convert Flask 'meds' data to a JavaScript array safely
+    const userReminders = {{ meds|tojson|safe }}; 
 
     userReminders.forEach(reminder => {
-        // Check if currentTime matches Time1 or Time2
         if (reminder.time1 === currentTime || reminder.time2 === currentTime) {
-            
-            lastAlertTime = currentTime; // Mark this minute as handled
+            lastAlertTime = currentTime; 
 
-            // 1. Browser Voice Alert
-            let speech = new SpeechSynthesisUtterance("Attention! It is time to take your medication: " + reminder.name);
+            // Browser Voice Alert
+            let speech = new SpeechSynthesisUtterance("Attention! It is time for your medication: " + reminder.name);
             speech.lang = 'en-US';
             window.speechSynthesis.speak(speech);
 
-            // 2. Visual Popup
-            console.log("Triggering alerts for: " + reminder.name);
-
-            // 3. Call Backend to send Email Alert
-            fetch('/trigger-reminder', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    email: reminder.recipient_email,
-                    med_name: reminder.name
-                })
-            })
-            .then(response => response.json())
-            .then(data => console.log("Email status:", data.message))
-            .catch(err => console.error("Error sending mail:", err));
+            console.log("Voice alert triggered for: " + reminder.name);
+            // Email is handled automatically by the BackgroundScheduler in app.py
         }
     });
 }
 
-// Run the check every 30 seconds for better accuracy
-setInterval(checkTimeAndAlert, 30000);
+// Check every 30 seconds
+setInterval(checkTimeAndVoiceAlert, 30000);
 </script>
 </body>
 </html>
