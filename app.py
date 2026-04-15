@@ -13,9 +13,11 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 # ── App & DB setup ────────────────────────────────────────────────────────────
 app = Flask(__name__)
+# Secret key for session signing
 app.secret_key = os.environ.get('SECRET_KEY', 'medihabit-super-secret-key-123')
 IST = pytz.timezone('Asia/Kolkata')
 
+# Database configuration (PostgreSQL for Render, SQLite for local)
 uri = os.environ.get('DATABASE_URL')
 if uri and uri.startswith("postgres://"):
     uri = uri.replace("postgres://", "postgresql://", 1)
@@ -26,13 +28,12 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"pool_pre_ping": True, "pool_recycle"
 
 db = SQLAlchemy(app)
 
-# ── Resend API Email Logic (Updated) ──────────────────────────────────────────
+# ── Resend API Email Logic ────────────────────────────────────────────────────
 resend.api_key = os.environ.get('RESEND_API_KEY')
 
 def send_smtp_email(to_email, subject, body):
     """
-    Using Resend API to bypass Render's SMTP port restrictions.
-    Note: 'from' must be 'onboarding@resend.dev' for free accounts.
+    Using Resend API to bypass SMTP restrictions.
     """
     if not resend.api_key:
         print("❌ Error: RESEND_API_KEY not set in Environment Variables")
@@ -218,6 +219,7 @@ def delete_medication(id):
         flash("Medication removed.", "success")
     return redirect(url_for('dashboard'))
 
+# ── Profile Edit Logic ────────────────────────────────────────────────────────
 @app.route('/profile', methods=['GET', 'POST'])
 @login_required
 def profile():
@@ -225,11 +227,14 @@ def profile():
     
     if request.method == 'POST':
         try:
+            # 1. Update Name
             new_name = request.form.get('name')
             if new_name:
                 user.name = new_name
-                session['user_name'] = new_name
+                # Update session so the navbar greeting changes immediately
+                session['user_name'] = new_name 
             
+            # 2. Update Password (only if user provided a new one)
             new_pw = request.form.get('password')
             if new_pw and len(new_pw.strip()) > 0:
                 user.set_password(new_pw)
@@ -243,6 +248,7 @@ def profile():
             flash("An error occurred while updating your profile.", "danger")
             return redirect(url_for('profile'))
     
+    # Passing the 'user' object to match {{ user.name }} in your template
     return render_template('edit_profile.html', user=user)
 
 # ── Reminder Engine ───────────────────────────────────────────────────────────
@@ -254,7 +260,6 @@ def send_reminder_task(med_id):
         body = f"Hello,\n\nIt is time for your medication: {med.name}\nNotes: {med.notes}"
         success = send_smtp_email(med.recipient_email, subject, body)
         
-        # Log the result
         log = AlertLog(
             user_id=med.user_id, 
             medication_name=med.name, 
