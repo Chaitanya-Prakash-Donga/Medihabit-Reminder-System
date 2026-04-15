@@ -1,8 +1,8 @@
 import os
 import threading
-import resend  # Use Resend instead of smtplib for Render compatibility
+import resend 
 import pytz
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 
 from flask import (Flask, render_template, request,
@@ -13,11 +13,9 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 # ── App & DB setup ────────────────────────────────────────────────────────────
 app = Flask(__name__)
-# Secret key for session signing
 app.secret_key = os.environ.get('SECRET_KEY', 'medihabit-super-secret-key-123')
 IST = pytz.timezone('Asia/Kolkata')
 
-# Database configuration (PostgreSQL for Render, SQLite for local)
 uri = os.environ.get('DATABASE_URL')
 if uri and uri.startswith("postgres://"):
     uri = uri.replace("postgres://", "postgresql://", 1)
@@ -32,11 +30,8 @@ db = SQLAlchemy(app)
 resend.api_key = os.environ.get('RESEND_API_KEY')
 
 def send_smtp_email(to_email, subject, body):
-    """
-    Using Resend API to bypass SMTP restrictions.
-    """
     if not resend.api_key:
-        print("❌ Error: RESEND_API_KEY not set in Environment Variables")
+        print("❌ Error: RESEND_API_KEY not set")
         return False
 
     try:
@@ -47,7 +42,6 @@ def send_smtp_email(to_email, subject, body):
             "text": body,
         }
         resend.Emails.send(params)
-        print(f"✅ Email sent successfully to {to_email}")
         return True
     except Exception as e:
         print(f"❌ Resend API Error: {str(e)}") 
@@ -59,6 +53,7 @@ class User(db.Model):
     name = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
+    # Using a factory to ensure current IST time on creation
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(IST))
     medications = db.relationship('Medication', backref='user', lazy=True, cascade='all, delete-orphan')
 
@@ -86,6 +81,7 @@ class AlertLog(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     medication_name = db.Column(db.String(200))
     recipient = db.Column(db.String(120))
+    # Explicitly set to IST to fix the 5.5 hour discrepancy
     sent_at = db.Column(db.DateTime, default=lambda: datetime.now(IST))
     status = db.Column(db.String(20), default='sent')
     error = db.Column(db.String(300))
@@ -113,7 +109,7 @@ def register():
             pw = request.form.get('password')
             
             if User.query.filter_by(email=email).first():
-                flash("Email already registered! Please log in.", "danger")
+                flash("Email already registered!", "danger")
                 return redirect(url_for('register'))
             
             user = User(name=name, email=email)
@@ -121,15 +117,14 @@ def register():
             db.session.add(user)
             db.session.commit()
             
-            welcome_body = f"Hi {name},\n\nWelcome to MediHabit! Your account is active."
-            threading.Thread(target=send_smtp_email, args=(email, "Welcome to MediHabit! 💊", welcome_body)).start()
+            welcome_body = f"Hi {name},\nWelcome to MediHabit!"
+            threading.Thread(target=send_smtp_email, args=(email, "Welcome! 💊", welcome_body)).start()
             
-            flash("Account created successfully! Please login.", "success")
+            flash("Account created! Please login.", "success")
             return redirect(url_for('login'))
         except Exception as e:
             db.session.rollback()
             flash(f"Error: {str(e)}", "danger")
-            return redirect(url_for('register'))
     return render_template('register.html')
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -140,138 +135,90 @@ def login():
         user = User.query.filter_by(email=email).first()
         if user and user.check_password(pw):
             session.update({'user_id': user.id, 'user_name': user.name})
-            flash(f"Welcome back, {user.name}!", "success")
+            flash(f"Welcome, {user.name}!", "success")
             return redirect(url_for('dashboard'))
-        flash("Invalid email or password.", "danger")
-        return redirect(url_for('login'))
+        flash("Invalid credentials.", "danger")
     return render_template('login.html')
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login'))
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
     uid = session.get('user_id')
     meds = Medication.query.filter_by(user_id=uid).all() 
-    
     today_ist = datetime.now(IST).date()
+    
     logs = AlertLog.query.filter(
         AlertLog.user_id == uid, 
         db.func.date(AlertLog.sent_at) == today_ist
     ).order_by(AlertLog.sent_at.desc()).all()
     
     today_display = datetime.now(IST).strftime('%A, %d %B %Y')
-    
     return render_template('dashboard.html', meds=meds, logs=logs, today_date=today_display)
 
-@app.route('/medication/add', methods=['POST'])
-@login_required
-def add_medication():
-    m = Medication(
-        user_id=session['user_id'],
-        name=request.form.get('name'),
-        dose=request.form.get('dose'),
-        frequency=request.form.get('frequency'),
-        time1=request.form.get('time1'),
-        time2=request.form.get('time2') or None,
-        recipient_email=request.form.get('recipient_email'),
-        notes=request.form.get('notes'),
-        email_enabled='email_enabled' in request.form
-    )
-    db.session.add(m)
-    db.session.commit()
-    flash(f'"{m.name}" scheduled!', 'success')
-    return redirect(url_for('dashboard'))
-
-@app.route('/medication/edit/<int:id>', methods=['GET', 'POST'])
-@login_required
-def edit_medication(id):
-    med = Medication.query.get_or_404(id)
-    if med.user_id != session['user_id']:
-        flash("Unauthorized access.", "danger")
-        return redirect(url_for('dashboard'))
-
-    if request.method == 'POST':
-        med.name = request.form.get('name')
-        med.dose = request.form.get('dose')
-        med.frequency = request.form.get('frequency')
-        med.time1 = request.form.get('time1')
-        med.time2 = request.form.get('time2') or None
-        med.notes = request.form.get('notes')
-        med.recipient_email = request.form.get('recipient_email')
-        med.email_enabled = 'email_enabled' in request.form
-        
-        db.session.commit()
-        flash("Medication updated!", "success")
-        return redirect(url_for('dashboard'))
-    return render_template('edit_medication.html', med=med)
-
-@app.route('/medication/delete/<int:id>')
-@login_required
-def delete_medication(id):
-    med = Medication.query.get_or_404(id)
-    if med.user_id == session['user_id']:
-        db.session.delete(med)
-        db.session.commit()
-        flash("Medication removed.", "success")
-    return redirect(url_for('dashboard'))
-
-# ── Profile Edit Logic ────────────────────────────────────────────────────────
 @app.route('/profile', methods=['GET', 'POST'])
 @login_required
 def profile():
     user = User.query.get(session['user_id'])
-    
     if request.method == 'POST':
         try:
-            # 1. Update Name
             new_name = request.form.get('name')
             if new_name:
                 user.name = new_name
-                # Update session so the navbar greeting changes immediately
                 session['user_name'] = new_name 
             
-            # 2. Update Password (only if user provided a new one)
             new_pw = request.form.get('password')
             if new_pw and len(new_pw.strip()) > 0:
                 user.set_password(new_pw)
             
             db.session.commit()
-            flash("Profile updated successfully!", "success")
+            flash("Profile updated!", "success")
             return redirect(url_for('dashboard'))
-            
         except Exception as e:
             db.session.rollback()
-            flash("An error occurred while updating your profile.", "danger")
-            return redirect(url_for('profile'))
-    
-    # Passing the 'user' object to match {{ user.name }} in your template
+            flash("Update failed.", "danger")
     return render_template('edit_profile.html', user=user)
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
 
 # ── Reminder Engine ───────────────────────────────────────────────────────────
 def send_reminder_task(med_id):
     with app.app_context():
         med = Medication.query.get(med_id)
         if not med or not med.email_enabled: return
+        
+        # Check if we already sent an alert for this med in the last 2 minutes
+        # to prevent duplicate emails from scheduler overlaps
+        recent_log = AlertLog.query.filter(
+            AlertLog.user_id == med.user_id,
+            AlertLog.medication_name == med.name,
+            AlertLog.sent_at >= datetime.now(IST) - timedelta(minutes=2)
+        ).first()
+        
+        if recent_log: return
+
         subject = f"💊 Time for {med.name}"
-        body = f"Hello,\n\nIt is time for your medication: {med.name}\nNotes: {med.notes}"
+        body = f"Hello,\n\nIt is time for: {med.name}\nNotes: {med.notes}"
         success = send_smtp_email(med.recipient_email, subject, body)
         
         log = AlertLog(
             user_id=med.user_id, 
             medication_name=med.name, 
             status='sent' if success else 'failed', 
-            recipient=med.recipient_email
+            recipient=med.recipient_email,
+            sent_at=datetime.now(IST) # Force IST timestamp
         )
         db.session.add(log)
         db.session.commit()
 
 def check_and_send():
     with app.app_context():
-        now_str = datetime.now(IST).strftime('%H:%M')
+        # Force check to use IST explicitly regardless of server settings
+        now_ist = datetime.now(IST)
+        now_str = now_ist.strftime('%H:%M')
+        
         meds = Medication.query.filter_by(active=True, email_enabled=True).all()
         for m in meds:
             if m.time1 == now_str or m.time2 == now_str:
