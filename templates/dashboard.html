@@ -14,8 +14,7 @@
     .nav{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
     .nav-logo{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:500;text-decoration:none;color:var(--text)}
     .logo-icon{width:30px;height:30px;border-radius:8px;background:var(--info-bg);display:flex;align-items:center;justify-content:center;font-size:15px}
-    .avatar{width:30px;height:30px;border-radius:50%;background:var(--info-bg);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;color:var(--info);transition: opacity 0.2s;}
-    .avatar:hover{opacity: 0.8;}
+    .avatar{width:30px;height:30px;border-radius:50%;background:var(--info-bg);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;color:var(--info)}
     .page{max-width:760px;margin:0 auto;padding:1.5rem 1.25rem}
     .page-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.25rem}
     .stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:1.25rem}
@@ -47,7 +46,6 @@
     .empty{text-align:center;padding:2rem;color:var(--muted);font-size:13px}
     .alert { padding: 10px; border-radius: 8px; margin-bottom: 1rem; font-size: 13px; text-align: center; }
     .alert-success { background: var(--success-bg); color: var(--success); }
-    .alert-danger { background: var(--danger-bg); color: var(--danger); }
     .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--accent);color:var(--accent-fg);padding:10px 20px;border-radius:var(--radius);font-size:13px;display:none;z-index:999}
 </style>
 </head>
@@ -58,13 +56,9 @@
     <div class="logo-icon">💊</div>
     MediHabit
   </a>
-  <div style="display:flex;align-items:center;gap:12px">
-    <a href="{{ url_for('profile') }}" style="text-decoration:none; display:flex; align-items:center; gap:8px;">
-      <div class="avatar" title="Edit Profile">
-        {{ session['user_name'][0]|upper if session['user_name'] else 'U' }}
-      </div>
-      <span style="font-size:13px;color:var(--muted); font-weight:500;">{{ session['user_name'] }}</span>
-    </a>
+  <div style="display:flex;align-items:center;gap:10px">
+    <div class="avatar">{{ session['user_name'][0]|upper if session['user_name'] else 'U' }}</div>
+    <span style="font-size:13px;color:var(--muted)">{{ session['user_name'] }}</span>
     <a href="{{ url_for('logout') }}" class="btn btn-sm">Log out</a>
   </div>
 </nav>
@@ -89,25 +83,9 @@
   </div>
 
   <div class="stat-grid">
-    <div class="stat-card">
-      <div class="stat-label">Medications</div>
-      <div class="stat-val">{{ meds|length }}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Alerts today</div>
-      <div class="stat-val">
-        {% set alerts = [] %}
-        {% for m in meds %}
-          {% if m.time1 %}{% set _ = alerts.append(1) %}{% endif %}
-          {% if m.time2 %}{% set _ = alerts.append(1) %}{% endif %}
-        {% endfor %}
-        {{ alerts|length }}
-      </div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Sent today</div>
-      <div class="stat-val">{{ logs|length }}</div>
-    </div>
+    <div class="stat-card"><div class="stat-label">Medications</div><div class="stat-val">{{ meds|length }}</div></div>
+    <div class="stat-card"><div class="stat-label">Alerts today</div><div class="stat-val">{{ (meds|selectattr('time1')|list|length) + (meds|selectattr('time2')|list|length) }}</div></div>
+    <div class="stat-card"><div class="stat-label">Sent today</div><div class="stat-val">{{ logs|length }}</div></div>
   </div>
 
   <div id="add-form" class="add-form">
@@ -117,11 +95,7 @@
       <div class="row2">
         <div class="field"><label>Dosage</label><input type="text" name="dose" placeholder="e.g. 1 tablet"/></div>
         <div class="field"><label>Frequency</label>
-          <select name="frequency">
-            <option>Once daily</option>
-            <option>Twice daily</option>
-            <option>Three times daily</option>
-          </select>
+          <select name="frequency"><option>Once daily</option><option>Twice daily</option><option>Three times daily</option></select>
         </div>
       </div>
       <div class="row2">
@@ -143,7 +117,7 @@
   <div class="section-label">Your medications</div>
   <div class="card">
     {% if not meds %}
-        <div class="empty">No medications yet. Use the button above to add one.</div>
+        <div class="empty">No medications yet.</div>
     {% else %}
         {% for m in meds %}
         <div class="med-row">
@@ -154,12 +128,12 @@
             <div class="chips">
               <span class="chip">{{ m.time1 }}</span>
               {% if m.time2 %}<span class="chip">{{ m.time2 }}</span>{% endif %}
-              {% if m.email_enabled %}<span class="badge b-blue">Email Enabled</span>{% endif %}
+              {% if m.email_enabled %}<span class="badge b-blue">Email</span>{% endif %}
             </div>
           </div>
           <div class="med-acts">
             <a href="{{ url_for('edit_medication', id=m.id) }}" class="btn btn-sm btn-info">Edit</a>
-            <a href="{{ url_for('delete_medication', id=m.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Remove this medication?')">Remove</a>
+            <a href="{{ url_for('delete_medication', id=m.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Remove this?')">Remove</a>
           </div>
         </div>
         {% endfor %}
@@ -169,7 +143,7 @@
   <div class="section-label">Today's alert log</div>
   <div class="card">
     {% if not logs %}
-        <div class="empty">No alerts sent yet today.</div>
+        <div class="empty">No alerts sent yet.</div>
     {% else %}
         {% for log in logs %}
         <div class="med-row">
@@ -178,9 +152,7 @@
             <div class="med-name">{{ log.medication_name }}</div>
             <div class="med-sub">Sent to {{ log.recipient }} at {{ log.sent_at.strftime('%H:%M') }}</div>
           </div>
-          <div class="badge {{ 'b-blue' if log.status == 'sent' else 'btn-danger' }}">
-            {{ log.status|capitalize }}
-          </div>
+          <div class="badge b-blue">Sent</div>
         </div>
         {% endfor %}
     {% endif %}
@@ -189,8 +161,7 @@
 
 <script>
 function toggleForm(){
-  const form = document.getElementById('add-form');
-  form.classList.toggle('open');
+  document.getElementById('add-form').classList.toggle('open');
 }
 
 function toast(msg){
