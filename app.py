@@ -2,7 +2,7 @@ import os
 import threading
 import resend  # Use Resend instead of smtplib for Render compatibility
 import pytz
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 
 from flask import (Flask, render_template, request,
@@ -59,7 +59,10 @@ class User(db.Model):
     name = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(IST))
+    
+    # Updated to explicitly fetch IST on every creation
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(pytz.timezone('Asia/Kolkata')))
+    
     medications = db.relationship('Medication', backref='user', lazy=True, cascade='all, delete-orphan')
 
     def set_password(self, pw):
@@ -86,7 +89,10 @@ class AlertLog(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     medication_name = db.Column(db.String(200))
     recipient = db.Column(db.String(120))
-    sent_at = db.Column(db.DateTime, default=lambda: datetime.now(IST))
+    
+    # Updated to explicitly fetch IST on every log entry
+    sent_at = db.Column(db.DateTime, default=lambda: datetime.now(pytz.timezone('Asia/Kolkata')))
+    
     status = db.Column(db.String(20), default='sent')
     error = db.Column(db.String(300))
 
@@ -151,19 +157,29 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
+# ── Updated Dashboard Route ───────────────────────────────────────────────────
 @app.route('/dashboard')
 @login_required
 def dashboard():
     uid = session.get('user_id')
     meds = Medication.query.filter_by(user_id=uid).all() 
     
-    today_ist = datetime.now(IST).date()
+    # 1. Force IST timezone for the "Today" calculation
+    tz = pytz.timezone('Asia/Kolkata')
+    now_ist = datetime.now(tz)
+    
+    # Create a 24-hour window for 'Today' in IST
+    start_of_day = now_ist.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_day = start_of_day + timedelta(days=1)
+    
+    # 2. Query logs within this specific IST window to bypass UTC server confusion
     logs = AlertLog.query.filter(
         AlertLog.user_id == uid, 
-        db.func.date(AlertLog.sent_at) == today_ist
+        AlertLog.sent_at >= start_of_day,
+        AlertLog.sent_at < end_of_day
     ).order_by(AlertLog.sent_at.desc()).all()
     
-    today_display = datetime.now(IST).strftime('%A, %d %B %Y')
+    today_display = now_ist.strftime('%A, %d %B %Y')
     
     return render_template('dashboard.html', meds=meds, logs=logs, today_date=today_display)
 
@@ -231,7 +247,6 @@ def profile():
             new_name = request.form.get('name')
             if new_name:
                 user.name = new_name
-                # Update session so the navbar greeting changes immediately
                 session['user_name'] = new_name 
             
             # 2. Update Password (only if user provided a new one)
@@ -248,7 +263,6 @@ def profile():
             flash("An error occurred while updating your profile.", "danger")
             return redirect(url_for('profile'))
     
-    # Passing the 'user' object to match {{ user.name }} in your template
     return render_template('edit_profile.html', user=user)
 
 # ── Reminder Engine ───────────────────────────────────────────────────────────
@@ -264,14 +278,16 @@ def send_reminder_task(med_id):
             user_id=med.user_id, 
             medication_name=med.name, 
             status='sent' if success else 'failed', 
-            recipient=med.recipient_email
+            recipient=med.recipient_email,
+            sent_at=datetime.now(pytz.timezone('Asia/Kolkata')) # Explicit IST log
         )
         db.session.add(log)
         db.session.commit()
 
 def check_and_send():
     with app.app_context():
-        now_str = datetime.now(IST).strftime('%H:%M')
+        # Force the scheduler to check against current IST time
+        now_str = datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%H:%M')
         meds = Medication.query.filter_by(active=True, email_enabled=True).all()
         for m in meds:
             if m.time1 == now_str or m.time2 == now_str:
@@ -287,4 +303,3 @@ scheduler.start()
 
 if __name__ == '__main__':
     app.run(debug=True, use_reloader=False)
-
