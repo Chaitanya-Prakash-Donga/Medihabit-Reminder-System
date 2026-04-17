@@ -14,6 +14,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 # ── App & DB setup ────────────────────────────────────────────────────────────
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'medihabit-super-secret-key-123')
+
+# Define IST Timezone
 IST = pytz.timezone('Asia/Kolkata')
 
 uri = os.environ.get('DATABASE_URL')
@@ -148,16 +150,19 @@ def dashboard():
     uid = session.get('user_id')
     meds = Medication.query.filter_by(user_id=uid).all() 
     
-    # Logic to prepare medicine list for the Voice Alert JS
+    # ── Updated: Logic for the Voice Alert JS ──
     meds_js = [{"name": m.name, "t1": m.time1, "t2": m.time2} for m in meds]
 
-    today_ist = datetime.now(IST).date()
+    # ── Updated: Force IST Time for display and filtering ──
+    now_ist = datetime.now(IST)
+    today_ist_date = now_ist.date()
+    
     logs = AlertLog.query.filter(
         AlertLog.user_id == uid, 
-        db.func.date(AlertLog.sent_at) == today_ist
+        db.func.date(AlertLog.sent_at) == today_ist_date
     ).order_by(AlertLog.sent_at.desc()).all()
     
-    today_display = datetime.now(IST).strftime('%A, %d %B %Y')
+    today_display = now_ist.strftime('%A, %d %B %Y')
     return render_template('dashboard.html', meds=meds, meds_js=meds_js, logs=logs, today_date=today_display)
 
 @app.route('/medication/add', methods=['POST'])
@@ -240,8 +245,14 @@ def send_reminder_task(med_id):
         body = f"Reminder: It is time to take {med.name}."
         success = send_smtp_email(med.recipient_email, subject, body)
         
-        log = AlertLog(user_id=med.user_id, medication_name=med.name, 
-                       status='sent' if success else 'failed', recipient=med.recipient_email)
+        # ── Updated: Explicitly force IST for the sent_at timestamp ──
+        log = AlertLog(
+            user_id=med.user_id, 
+            medication_name=med.name, 
+            status='sent' if success else 'failed', 
+            recipient=med.recipient_email,
+            sent_at=datetime.now(IST)  # This fixes the 5-hour delay in logs
+        )
         db.session.add(log)
         db.session.commit()
 
