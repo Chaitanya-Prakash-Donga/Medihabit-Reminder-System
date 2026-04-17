@@ -57,9 +57,11 @@
   </a>
   <div style="display:flex;align-items:center;gap:10px">
     <div class="avatar">{{ session['user_name'][0]|upper if session['user_name'] else 'U' }}</div>
+    
     <a href="{{ url_for('profile') }}" style="text-decoration:none; color:var(--muted); font-size:13px; font-weight:500;">
         {{ session['user_name'] }}
     </a>
+
     <a href="{{ url_for('logout') }}" class="btn btn-sm btn-danger">Log out</a>
   </div>
 </nav>
@@ -159,31 +161,32 @@ function toggleForm(){
   document.getElementById('add-form').classList.toggle('open');
 }
 
-// VOICE ALERT LOGIC
-// This script checks the time every 30 seconds.
+// OPTIMIZED VOICE ALERT LOGIC
 const meds = {{ meds_js | tojson }};
-const spokenTimes = new Set(); // Prevents repeating the alert in the same minute
+const spokenHistory = new Set(); 
 
 setInterval(() => {
-    const now = new Date();
-    // Force browser to check time in IST for comparison
-    const ISTTime = now.toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' });
+    // Get current time formatted specifically to IST HH:mm (e.g., 10:52)
+    const nowIST = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Kolkata',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    }).format(new Date());
 
     meds.forEach(m => {
-        // Check both time slots
-        if ((m.t1 === ISTTime || (m.t2 && m.t2 === ISTTime)) && !spokenTimes.has(m.name + ISTTime)) {
-            const message = `Reminder: Hi ${document.querySelector('a[href*="profile"]').innerText.trim()}, it is time to take your medicine: ${m.name}.`;
-            const speech = new SpeechSynthesisUtterance(message);
-            speech.rate = 0.9; // Slightly slower for clarity
+        // Compare set time (m.t1/m.t2) to current browser IST time
+        if ((m.t1 === nowIST || (m.t2 && m.t2 === nowIST)) && !spokenHistory.has(m.name + nowIST)) {
+            const msg = `Attention! It is ${nowIST}. Time to take your medicine: ${m.name}.`;
+            const speech = new SpeechSynthesisUtterance(msg);
+            speech.lang = 'en-IN'; // Indian accent
+            speech.rate = 0.9;
             window.speechSynthesis.speak(speech);
             
-            spokenTimes.add(m.name + ISTTime); // Mark as spoken
+            spokenHistory.add(m.name + nowIST); // Prevents repeating within the same minute
         }
     });
-    
-    // Clear old data every hour to keep memory clean
-    if (now.getMinutes() === 0) spokenTimes.clear();
-}, 30000);
+}, 30000); // Checks every 30 seconds
 </script>
 </body>
 </html>
