@@ -1,7 +1,6 @@
 """
 MediHabit - app.py
 Full Flask backend: auth, CRUD, Gmail SMTP email alerts, APScheduler
-Updated for PWA Support (Manifest and Service Worker routes)
 """
 import os
 import threading
@@ -10,9 +9,8 @@ import pytz
 from datetime import datetime
 from functools import wraps
 
-# Added 'send_from_directory' to imports
 from flask import (Flask, render_template, request,
-                   redirect, url_for, session, flash, send_from_directory)
+                   redirect, url_for, session, flash)
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -100,17 +98,6 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
-# ── PWA Support Routes ────────────────────────────────────────────────────────
-# These routes ensure the browser can find your manifest and service worker
-
-@app.route('/manifest.json')
-def serve_manifest():
-    return send_from_directory('static', 'manifest.json')
-
-@app.route('/sw.js')
-def serve_sw():
-    return send_from_directory('static', 'sw.js')
-
 # ── Routes ────────────────────────────────────────────────────────────────────
 @app.route('/')
 def index():
@@ -167,8 +154,10 @@ def dashboard():
     uid = session.get('user_id')
     meds = Medication.query.filter_by(user_id=uid).all() 
     
+    # ── Updated: Logic for the Voice Alert JS ──
     meds_js = [{"name": m.name, "t1": m.time1, "t2": m.time2} for m in meds]
 
+    # ── Updated: Force IST Time for display and filtering ──
     now_ist = datetime.now(IST)
     today_ist_date = now_ist.date()
     
@@ -260,12 +249,13 @@ def send_reminder_task(med_id):
         body = f"Reminder: It is time to take {med.name}."
         success = send_smtp_email(med.recipient_email, subject, body)
         
+        # ── Updated: Explicitly force IST for the sent_at timestamp ──
         log = AlertLog(
             user_id=med.user_id, 
             medication_name=med.name, 
             status='sent' if success else 'failed', 
             recipient=med.recipient_email,
-            sent_at=datetime.now(IST) 
+            sent_at=datetime.now(IST)  # This fixes the 5-hour delay in logs
         )
         db.session.add(log)
         db.session.commit()
