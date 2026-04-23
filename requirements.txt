@@ -4,3 +4,4 @@ APScheduler
 gunicorn
 psycopg2-binary
 resend
+pytz
