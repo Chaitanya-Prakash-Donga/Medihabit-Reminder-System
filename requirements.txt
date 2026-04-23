@@ -1,7 +1,7 @@
-Flask
-Flask-SQLAlchemy
-APScheduler
-gunicorn
-psycopg2-binary
-resend
-pytz
+Flask==2.3.3
+Flask-SQLAlchemy==3.0.5
+Werkzeug==2.3.7
+APScheduler==3.10.4
+psycopg2-binary==2.9.9
+pytz==2023.3
+gunicorn==21.2.0
