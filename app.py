@@ -2,9 +2,12 @@
 MediHabit - app.py
 Full Flask backend: auth, CRUD, Gmail SMTP email alerts, APScheduler
 """
+"""
+MediHabit - app.py (Updated with Explicit IST Localization)
+"""
 import os
 import threading
-import resend  # Use Resend instead of smtplib for Render compatibility
+import resend  
 import pytz
 from datetime import datetime
 from functools import wraps
@@ -21,6 +24,10 @@ app.secret_key = os.environ.get('SECRET_KEY', 'medihabit-super-secret-key-123')
 
 # Define IST Timezone
 IST = pytz.timezone('Asia/Kolkata')
+
+# Helper function for explicit IST time (Step 1 fix)
+def get_ist_time():
+    return datetime.now(IST)
 
 uri = os.environ.get('DATABASE_URL')
 if uri and uri.startswith("postgres://"):
@@ -58,7 +65,8 @@ class User(db.Model):
     name = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(IST))
+    # Use the helper function for the default value
+    created_at = db.Column(db.DateTime, default=get_ist_time)
     medications = db.relationship('Medication', backref='user', lazy=True, cascade='all, delete-orphan')
 
     def set_password(self, pw):
@@ -85,7 +93,8 @@ class AlertLog(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     medication_name = db.Column(db.String(200))
     recipient = db.Column(db.String(120))
-    sent_at = db.Column(db.DateTime, default=lambda: datetime.now(IST))
+    # Forced IST for logging (Step 2 fix)
+    sent_at = db.Column(db.DateTime, default=get_ist_time)
     status = db.Column(db.String(20), default='sent')
     error = db.Column(db.String(300))
 
@@ -111,6 +120,17 @@ def serve_sw():
 @app.route('/')
 def index():
     return redirect(url_for('dashboard')) if 'user_id' in session else redirect(url_for('login'))
+
+# DEBUG ROUTE: Use this to check if Render's time is correct
+@app.route('/debug-time')
+def debug_time():
+    server_now = datetime.now()
+    ist_now = get_ist_time()
+    return {
+        "server_raw_utc_likely": server_now.strftime('%Y-%m-%d %H:%M:%S'),
+        "ist_localized": ist_now.strftime('%Y-%m-%d %H:%M:%S'),
+        "env_tz": os.environ.get('TZ', 'Not Set')
+    }
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -163,13 +183,13 @@ def dashboard():
     uid = session.get('user_id')
     meds = Medication.query.filter_by(user_id=uid).all() 
     
-    # ── Updated: Logic for the Voice Alert JS ──
     meds_js = [{"name": m.name, "t1": m.time1, "t2": m.time2} for m in meds]
 
-    # ── Updated: Force IST Time for display and filtering ──
-    now_ist = datetime.now(IST)
+    # Force IST for display logic
+    now_ist = get_ist_time()
     today_ist_date = now_ist.date()
     
+    # When querying logs, we ensure we filter by the localized date
     logs = AlertLog.query.filter(
         AlertLog.user_id == uid, 
         db.func.date(AlertLog.sent_at) == today_ist_date
@@ -258,20 +278,21 @@ def send_reminder_task(med_id):
         body = f"Reminder: It is time to take {med.name}."
         success = send_smtp_email(med.recipient_email, subject, body)
         
-        # ── Updated: Explicitly force IST for the sent_at timestamp ──
+        # Explicitly force IST for the sent_at log
         log = AlertLog(
             user_id=med.user_id, 
             medication_name=med.name, 
             status='sent' if success else 'failed', 
             recipient=med.recipient_email,
-            sent_at=datetime.now(IST)  # This fixes the 5-hour delay in logs
+            sent_at=get_ist_time() 
         )
         db.session.add(log)
         db.session.commit()
 
 def check_and_send():
     with app.app_context():
-        now_str = datetime.now(IST).strftime('%H:%M')
+        # Compare current IST time string with medication time string
+        now_str = get_ist_time().strftime('%H:%M')
         meds = Medication.query.filter_by(active=True).all()
         for m in meds:
             if m.time1 == now_str or m.time2 == now_str:
@@ -281,6 +302,7 @@ def check_and_send():
 with app.app_context():
     db.create_all()
 
+# Ensure APScheduler uses IST for its internal clock
 scheduler = BackgroundScheduler(timezone=IST)
 scheduler.add_job(check_and_send, 'interval', minutes=1)
 scheduler.start()
