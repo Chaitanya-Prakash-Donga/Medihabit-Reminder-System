@@ -31,6 +31,10 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"pool_pre_ping": True, "pool_recycle"
 
 db = SQLAlchemy(app)
 
+# Add this right after db = SQLAlchemy(app)
+with app.app_context():
+    db.create_all()
+
 # ── Resend Email Function ─────────────────────────────────────────────────────
 def send_mail_via_resend(to_email, subject, body):
     try:
@@ -53,11 +57,9 @@ class User(db.Model):
     name = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
-    # --- New Fields for OTP and Mobile ---
     mobile = db.Column(db.String(15), default="9100000000") 
     otp = db.Column(db.String(4), nullable=True)
     is_verified = db.Column(db.Boolean, default=False)
-    # -------------------------------------
     created_at = db.Column(db.DateTime, default=get_now_naive)
     medications = db.relationship('Medication', backref='user', lazy=True, cascade='all, delete-orphan')
 
@@ -148,43 +150,29 @@ def check_and_send():
 
 @app.route('/send_otp', methods=['POST'])
 def send_otp():
-    # Use email from registration form (passed via JSON fetch) or session for existing users
-    data = request.get_json()
-    email = data.get('email') if data else None
-    
-    if not email:
-        return jsonify({"error": "Email is required"}), 400
+    try:
+        # Get data from JSON fetch call
+        data = request.get_json()
+        mobile = data.get('mobile')
+        email = data.get('email') # Can also capture email if needed for Resend
+        
+        generated_otp = str(random.randint(1000, 9999))
+        
+        # Store OTP in session since User doesn't exist in DB yet
+        session['temp_otp'] = generated_otp
+        session['temp_mobile'] = mobile
+        
+        # If you want to also send it to their email via Resend:
+        if email:
+            send_mail_via_resend(email, "Your Verification Code", f"Your code is: {generated_otp}")
 
-    generated_otp = str(random.randint(1000, 9999))
-    
-    # Store OTP temporarily in a way that registration can find it
-    # We check if a user already exists with this email (for profile edits) 
-    # OR we handle it during registration logic
-    user = User.query.filter_by(email=email).first()
-    
-    # If user doesn't exist yet (New Registration), we can't save to DB.user.id
-    # Instead, we send it and the register route will verify it.
-    
-    subject = "Verification Code - MediHabit"
-    body = f"Your 4-digit verification code is: {generated_otp}"
-    
-    success = send_mail_via_resend(email, subject, body)
-    
-    if success:
-        # For academic demo purposes, we store it in the session or a global tracker
-        # If user exists, update their OTP field
-        if user:
-            user.otp = generated_otp
-            db.session.commit()
-        else:
-            # If new user, keep OTP in session to verify upon form submission
-            session['reg_otp'] = generated_otp
-            session['reg_email'] = email
-            
-        print(f"DEBUG: OTP for {email} is {generated_otp}")
-        return jsonify({"status": "sent"}), 200
-    
-    return jsonify({"error": "Failed to send email"}), 500
+        # This shows in your Render/Server logs
+        print(f"DEBUG: OTP for {mobile} is {generated_otp}")
+        
+        return jsonify({"success": True, "message": "OTP Sent!"})
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({"success": False, "message": str(e)}), 500
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -193,11 +181,11 @@ def register():
             name = request.form.get('name')
             email = request.form.get('email').strip().lower()
             pw = request.form.get('password')
+            mobile = request.form.get('mobile')
             entered_otp = request.form.get('otp_input')
 
-            # Verification Logic
-            stored_otp = session.get('reg_otp')
-            if entered_otp != stored_otp:
+            # Verify against session-stored OTP
+            if entered_otp != session.get('temp_otp'):
                 flash("Invalid OTP. Please try again.", "danger")
                 return render_template('register.html')
 
@@ -205,14 +193,15 @@ def register():
                 flash("Email already registered!", "danger")
                 return redirect(url_for('register'))
 
-            user = User(name=name, email=email, is_verified=True)
+            # Create User
+            user = User(name=name, email=email, mobile=mobile, is_verified=True)
             user.set_password(pw)
             db.session.add(user)
             db.session.commit()
             
-            # Cleanup session
-            session.pop('reg_otp', None)
-            session.pop('reg_email', None)
+            # Clear temporary session data
+            session.pop('temp_otp', None)
+            session.pop('temp_mobile', None)
 
             flash("Account Created Successfully!", "success")
             return redirect(url_for('login'))
@@ -335,9 +324,6 @@ def trigger_reminder(med_id):
     return jsonify({"status": "received"}), 200
 
 # ── Startup & Scheduler ───────────────────────────────────────────────────────
-with app.app_context():
-    db.create_all()
-
 scheduler = BackgroundScheduler()
 if not scheduler.running:
     scheduler.add_job(check_and_send, 'interval', minutes=1, id='med_job', replace_existing=True)
