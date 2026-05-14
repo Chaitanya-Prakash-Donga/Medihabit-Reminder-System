@@ -1,6 +1,5 @@
 import os
 import threading
-import random
 import resend
 from datetime import datetime, timedelta
 from functools import wraps
@@ -19,6 +18,7 @@ app.secret_key = os.environ.get('SECURITY_KEY', 'medihabit-super-secret-123')
 resend.api_key = os.environ.get('RESEND_API_KEY')
 
 def get_now_naive():
+    # Remove microseconds for cleaner database comparison
     return datetime.now().replace(tzinfo=None, microsecond=0)
 
 uri = os.environ.get('DATABASE_URL')
@@ -30,9 +30,6 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"pool_pre_ping": True, "pool_recycle": 280}
 
 db = SQLAlchemy(app)
-
-with app.app_context():
-    db.create_all()
 
 # ── Resend Email Function ─────────────────────────────────────────────────────
 def send_mail_via_resend(to_email, subject, body):
@@ -56,9 +53,6 @@ class User(db.Model):
     name = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
-    mobile = db.Column(db.String(15), default="9100000000") 
-    otp = db.Column(db.String(4), nullable=True)
-    is_verified = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=get_now_naive)
     medications = db.relationship('Medication', backref='user', lazy=True, cascade='all, delete-orphan')
 
@@ -136,6 +130,7 @@ def check_and_send():
         meds = Medication.query.filter_by(active=True, email_enabled=True).all()
         for m in meds:
             if m.time1 == now_str or m.time2 == now_str:
+                # Check for existing log in the current minute to prevent duplicates
                 recent_log = AlertLog.query.filter(
                     AlertLog.user_id == m.user_id,
                     AlertLog.medication_name == m.name,
@@ -145,32 +140,10 @@ def check_and_send():
                 if not recent_log:
                     threading.Thread(target=send_reminder_task, args=(m.id,), daemon=True).start()
 
-# ── NEW: Mobile OTP Route ───────────────────────────────────────────────────
-
-@app.route('/send_mobile_otp', methods=['POST'])
-def send_mobile_otp():
-    try:
-        data = request.get_json()
-        mobile = data.get('mobile')
-        
-        # Generate 4-digit OTP
-        otp = str(random.randint(1000, 9999))
-        
-        # Save to session to verify later during registration
-        session['mobile_otp'] = otp
-        session['target_mobile'] = mobile
-        
-        # Output to terminal/Render logs for project testing
-        print(f"\n--- MOBILE VERIFICATION ---")
-        print(f"Target Mobile: {mobile}")
-        print(f"Generated OTP: {otp}")
-        print(f"---------------------------\n")
-        
-        return jsonify({"success": True, "message": "OTP printed to server logs!"})
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
-
-# ── OTP & Registration Routes ─────────────────────────────────────────────────
+# ── Routes ────────────────────────────────────────────────────────────────────
+@app.route('/')
+def index():
+    return redirect(url_for('dashboard')) if 'user_id' in session else redirect(url_for('login'))
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -179,39 +152,19 @@ def register():
             name = request.form.get('name')
             email = request.form.get('email').strip().lower()
             pw = request.form.get('password')
-            mobile = request.form.get('mobile')
-            entered_otp = request.form.get('otp_input')
-
-            # Verify against session-stored Mobile OTP
-            if entered_otp != session.get('mobile_otp'):
-                flash("Invalid Mobile OTP. Please check server logs.", "danger")
-                return render_template('register.html')
-
             if User.query.filter_by(email=email).first():
                 flash("Email already registered!", "danger")
                 return redirect(url_for('register'))
-
-            # Create User
-            user = User(name=name, email=email, mobile=mobile, is_verified=True)
+            user = User(name=name, email=email)
             user.set_password(pw)
             db.session.add(user)
             db.session.commit()
-            
-            # Clear session data
-            session.pop('mobile_otp', None)
-            session.pop('target_mobile', None)
-
-            flash("Account Created Successfully!", "success")
+            flash("Account created! Please login.", "success")
             return redirect(url_for('login'))
         except Exception as e:
             db.session.rollback()
             flash(f"Error: {str(e)}", "danger")
     return render_template('register.html')
-
-# ── Standard Routes ───────────────────────────────────────────────────────────
-@app.route('/')
-def index():
-    return redirect(url_for('dashboard')) if 'user_id' in session else redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -244,8 +197,11 @@ def dashboard():
     ).order_by(AlertLog.sent_at.desc()).all()
 
     return render_template('dashboard.html',
-                           meds=meds, meds_js=meds_js, logs=logs,
-                           user=user, today_date=datetime.now().strftime('%A, %d %B'))
+                           meds=meds,
+                           meds_js=meds_js,
+                           logs=logs,
+                           user=user,
+                           today_date=datetime.now().strftime('%A, %d %B'))
 
 @app.route('/medication/add', methods=['POST'])
 @login_required
@@ -269,8 +225,10 @@ def add_medication():
 @login_required
 def edit_medication(id):
     med = Medication.query.get_or_404(id) 
+    
     if med.user_id != session['user_id']:
         abort(403)
+        
     if request.method == 'POST':
         med.name = request.form.get('name')
         med.dose = request.form.get('dose')
@@ -279,10 +237,23 @@ def edit_medication(id):
         med.recipient_email = request.form.get('recipient_email')
         med.notes = request.form.get('notes')
         med.email_enabled = 'email_enabled' in request.form
+        
         db.session.commit()
         flash(f'"{med.name}" updated!', 'success')
         return redirect(url_for('dashboard'))
-    return render_template('edit_medication.html', med=med)
+
+    return render_template('edit_medicine.html', med=med)
+
+@app.route('/medication/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_medication(id):
+    med = Medication.query.get_or_404(id)
+    if med.user_id != session['user_id']:
+        abort(403)
+    db.session.delete(med)
+    db.session.commit()
+    flash("Medication deleted.", "success")
+    return redirect(url_for('dashboard'))
 
 @app.route('/profile', methods=['GET', 'POST'])
 @login_required
@@ -304,24 +275,33 @@ def profile():
 def trigger_reminder(med_id):
     med = Medication.query.get(med_id)
     if not med: return jsonify({"status": "not_found"}), 404
+    
+    # --- DUPLICATE PREVENTION LOCK ---
+    # Check if a log was created for this medication in the last 60 seconds
     now = get_now_naive()
     recent_log = AlertLog.query.filter(
         AlertLog.user_id == session['user_id'],
         AlertLog.medication_name == med.name,
         AlertLog.sent_at >= now - timedelta(seconds=59)
     ).first()
+
     if recent_log:
         return jsonify({"status": "already_sent_this_minute"}), 200
+
     new_log = AlertLog(
         user_id=session['user_id'], medication_name=med.name,
         status='pending', recipient=med.recipient_email, sent_at=now
     )
     db.session.add(new_log)
     db.session.commit()
+    
     threading.Thread(target=send_reminder_task, args=(med.id, new_log.id), daemon=True).start()
     return jsonify({"status": "received"}), 200
 
 # ── Startup & Scheduler ───────────────────────────────────────────────────────
+with app.app_context():
+    db.create_all()
+
 scheduler = BackgroundScheduler()
 if not scheduler.running:
     scheduler.add_job(check_and_send, 'interval', minutes=1, id='med_job', replace_existing=True)
