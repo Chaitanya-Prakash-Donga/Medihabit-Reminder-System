@@ -18,12 +18,15 @@
         .wrap{max-width:380px;margin:4rem auto;padding:0 1rem}
         .logo-box{width:48px;height:48px;border-radius:12px;background:var(--info-bg);display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 12px}
         
-        /* Flash Message Styles */
         .flash{padding:10px 14px;border-radius:var(--radius);margin-bottom:1rem;font-size:14px}
         .flash-danger{background:var(--danger-bg);color:var(--danger)}
         .flash-success{background:var(--success-bg);color:var(--success)}
         
         a{color:var(--accent);text-decoration:none;font-weight:500}
+
+        /* Utility for Step transition */
+        .hidden { display: none; }
+        .otp-text { font-size: 13px; color: var(--muted); margin-bottom: 12px; text-align: center; }
     </style>
 </head>
 <body>
@@ -31,9 +34,10 @@
   <div style="text-align:center;margin-bottom:2rem">
     <div class="logo-box">💊</div>
     <h1 style="font-size:22px;font-weight:500">Create your account</h1>
-    <p style="font-size:13px;color:var(--muted);margin-top:4px">Start managing your medication reminders</p>
+    <p style="font-size:13px;color:var(--muted);margin-top:4px">Verify your email to get started</p>
   </div>
 
+  <!-- Flash Messages -->
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       {% for category, message in messages %}
@@ -43,20 +47,38 @@
   {% endwith %}
 
   <div class="card">
-    <form action="{{ url_for('register') }}" method="POST">
-      <div class="field">
-        <label>Full name</label>
-        <input type="text" name="name" id="name" placeholder="Your name" required/>
+    <form id="registrationForm" action="{{ url_for('register') }}" method="POST">
+      
+      <!-- STEP 1: Personal Details -->
+      <div id="step1">
+        <div class="field">
+          <label>Full name</label>
+          <input type="text" name="name" id="name" placeholder="Your name" required/>
+        </div>
+        <div class="field">
+          <label>Email address</label>
+          <input type="email" name="email" id="email" placeholder="you@email.com" required/>
+        </div>
+        <div class="field" style="margin-bottom:1.25rem">
+          <label>Password</label>
+          <input type="password" name="password" id="password" placeholder="Min. 8 characters" minlength="8" required/>
+        </div>
+        <button type="button" class="btn" onclick="sendVerificationOTP()">Register & Send OTP</button>
       </div>
-      <div class="field">
-        <label>Email address</label>
-        <input type="email" name="email" id="email" placeholder="you@email.com" required/>
+
+      <!-- STEP 2: OTP Verification -->
+      <div id="step2" class="hidden">
+        <p class="otp-text">We've sent a 4-digit code to your email. Please enter it below.</p>
+        <div class="field">
+          <label>Verification Code</label>
+          <input type="text" name="otp_input" id="otp_input" placeholder="Enter 4-digit OTP" maxlength="4" pattern="\d{4}">
+        </div>
+        <button type="submit" class="btn">Verify & Create Account</button>
+        <p style="text-align:center; margin-top:10px;">
+            <a href="#" onclick="location.reload()" style="font-size:12px; color:var(--muted);">Back to details</a>
+        </p>
       </div>
-      <div class="field" style="margin-bottom:1.25rem">
-        <label>Password</label>
-        <input type="password" name="password" id="password" placeholder="Min. 8 characters" minlength="8" required/>
-      </div>
-      <button type="submit" class="btn">Create account</button>
+
     </form>
   </div>
 
@@ -64,5 +86,40 @@
     Already have an account? <a href="{{ url_for('login') }}">Log in</a>
   </p>
 </div>
+
+<script>
+async function sendVerificationOTP() {
+    const email = document.getElementById('email').value;
+    const name = document.getElementById('name').value;
+    const password = document.getElementById('password').value;
+
+    if (!email || !name || password.length < 8) {
+        alert("Please fill in all fields correctly before requesting an OTP.");
+        return;
+    }
+
+    // Trigger the /send_otp route
+    try {
+        const response = await fetch('/send_otp', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ email: email })
+        });
+
+        if (response.ok) {
+            alert("OTP has been sent to " + email);
+            document.getElementById('step1').classList.add('hidden');
+            document.getElementById('step2').classList.remove('hidden');
+        } else {
+            alert("Error sending OTP. Please try again.");
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert("Server connection failed.");
+    }
+}
+</script>
 </body>
 </html>
