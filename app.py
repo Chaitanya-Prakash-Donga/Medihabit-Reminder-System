@@ -18,7 +18,6 @@ app.secret_key = os.environ.get('SECURITY_KEY', 'medihabit-super-secret-123')
 resend.api_key = os.environ.get('RESEND_API_KEY')
 
 def get_now_naive():
-    # Remove microseconds for cleaner database comparison
     return datetime.now().replace(tzinfo=None, microsecond=0)
 
 uri = os.environ.get('DATABASE_URL')
@@ -46,6 +45,17 @@ def send_mail_via_resend(to_email, subject, body):
     except Exception as e:
         print(f"❌ Resend Error: {e}")
         return False
+
+# ── Welcome Email Helper ──────────────────────────────────────────────────────
+def send_welcome_email(recipient_email, name):
+    subject = "Welcome to MediHabit! 💊"
+    body = (f"Hello {name},\n\n"
+            "Thank you for joining the MediHabit Reminder System! "
+            "We are here to help you stay on track with your health and medications.\n\n"
+            "Log in now to start adding your daily schedules.\n\n"
+            "Best regards,\nThe MediHabit Team")
+    # Using your existing resend function
+    return send_mail_via_resend(recipient_email, subject, body)
 
 # ── Models ────────────────────────────────────────────────────────────────────
 class User(db.Model):
@@ -130,7 +140,6 @@ def check_and_send():
         meds = Medication.query.filter_by(active=True, email_enabled=True).all()
         for m in meds:
             if m.time1 == now_str or m.time2 == now_str:
-                # Check for existing log in the current minute to prevent duplicates
                 recent_log = AlertLog.query.filter(
                     AlertLog.user_id == m.user_id,
                     AlertLog.medication_name == m.name,
@@ -152,14 +161,25 @@ def register():
             name = request.form.get('name')
             email = request.form.get('email').strip().lower()
             pw = request.form.get('password')
+            
             if User.query.filter_by(email=email).first():
                 flash("Email already registered!", "danger")
                 return redirect(url_for('register'))
+            
+            # Create the user
             user = User(name=name, email=email)
             user.set_password(pw)
             db.session.add(user)
             db.session.commit()
-            flash("Account created! Please login.", "success")
+            
+            # SEND WELCOME EMAIL
+            try:
+                # Use threading to prevent the page from hanging while email sends
+                threading.Thread(target=send_welcome_email, args=(email, name), daemon=True).start()
+            except Exception as e:
+                print(f"Welcome Mail Error: {e}")
+
+            flash("Account created! Please login. A welcome email has been sent.", "success")
             return redirect(url_for('login'))
         except Exception as e:
             db.session.rollback()
@@ -276,8 +296,6 @@ def trigger_reminder(med_id):
     med = Medication.query.get(med_id)
     if not med: return jsonify({"status": "not_found"}), 404
     
-    # --- DUPLICATE PREVENTION LOCK ---
-    # Check if a log was created for this medication in the last 60 seconds
     now = get_now_naive()
     recent_log = AlertLog.query.filter(
         AlertLog.user_id == session['user_id'],
