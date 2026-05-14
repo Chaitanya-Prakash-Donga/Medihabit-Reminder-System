@@ -10,7 +10,6 @@
         body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
         input{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit;font-size:14px;outline:none;transition:border-color .15s}
         input:focus{border-color:var(--accent)}
-        input[readonly]{background-color:#f9f9f9;cursor:not-allowed;color:var(--muted)}
         label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
         .btn{display:flex;align-items:center;justify-content:center;width:100%;padding:10px;background:var(--accent);color:var(--accent-fg);border:none;border-radius:var(--radius);font-size:14px;font-family:inherit;font-weight:500;cursor:pointer;transition:opacity .15s}
         .btn:hover{opacity:.85}
@@ -35,7 +34,7 @@
   <div style="text-align:center;margin-bottom:2rem">
     <div class="logo-box">💊</div>
     <h1 style="font-size:22px;font-weight:500">Create your account</h1>
-    <p style="font-size:13px;color:var(--muted);margin-top:4px">Verify your email to get started</p>
+    <p style="font-size:13px;color:var(--muted);margin-top:4px">Verify your mobile to get started</p>
   </div>
 
   <!-- Flash Messages -->
@@ -65,21 +64,21 @@
           <input type="password" name="password" id="password" placeholder="Min. 8 characters" minlength="8" required/>
         </div>
         
-        <!-- Updated Mobile Field -->
+        <!-- Updated Mobile Field (Editable) -->
         <div class="field" style="margin-bottom:1.5rem">
-            <label>Mobile Number (For Alerts)</label>
-            <input type="text" name="mobile" id="mobile" value="9100000000" readonly>
+            <label>Mobile Number</label>
+            <input type="text" name="mobile" id="mobile" placeholder="Enter Mobile Number" required>
         </div>
 
-        <button type="button" class="btn" onclick="sendVerificationOTP()">Register & Send OTP</button>
+        <button type="button" class="btn" onclick="sendMobileOTP()">Register & Send OTP</button>
       </div>
 
-      <!-- STEP 2: OTP Verification -->
-      <div id="step2" class="hidden">
-        <p class="otp-text">We've sent a 4-digit code to your email. Please enter it below.</p>
+      <!-- STEP 2: OTP Verification (ID updated to match JS logic) -->
+      <div id="otp-section" class="hidden">
+        <p class="otp-text">We've sent a code to your mobile number. Please enter it below.</p>
         <div class="field">
           <label>Verification Code</label>
-          <input type="text" name="otp_input" id="otp_input" placeholder="Enter 4-digit OTP" maxlength="4" pattern="\d{4}">
+          <input type="text" name="otp_input" id="otp_input" placeholder="Enter OTP" maxlength="6">
         </div>
         <button type="submit" class="btn">Verify & Create Account</button>
         <p style="text-align:center; margin-top:10px;">
@@ -96,32 +95,37 @@
 </div>
 
 <script>
-async function sendVerificationOTP() {
-    const email = document.getElementById('email').value;
+async function sendMobileOTP() {
+    const mobileNumber = document.getElementById('mobile').value;
     const name = document.getElementById('name').value;
+    const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
 
-    if (!email || !name || password.length < 8) {
+    // Basic validation
+    if (!mobileNumber || !name || !email || password.length < 8) {
         alert("Please fill in all fields correctly before requesting an OTP.");
         return;
     }
 
-    // Trigger the /send_otp route
+    // Trigger the /send_mobile_otp route
     try {
-        const response = await fetch('/send_otp', {
+        const response = await fetch('/send_mobile_otp', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ email: email })
+            body: JSON.stringify({ mobile: mobileNumber })
         });
 
-        if (response.ok) {
-            alert("OTP has been sent to " + email);
+        const data = await response.json();
+
+        if (data.success) {
+            alert("OTP sent to your mobile number!"); 
             document.getElementById('step1').classList.add('hidden');
-            document.getElementById('step2').classList.remove('hidden');
+            document.getElementById('otp-section').style.display = 'block';
+            document.getElementById('otp-section').classList.remove('hidden');
         } else {
-            alert("Error sending OTP. Please try again.");
+            alert(data.message || "Failed to send mobile OTP.");
         }
     } catch (error) {
         console.error('Error:', error);
