@@ -31,7 +31,6 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"pool_pre_ping": True, "pool_recycle"
 
 db = SQLAlchemy(app)
 
-# Add this right after db = SQLAlchemy(app)
 with app.app_context():
     db.create_all()
 
@@ -146,33 +145,32 @@ def check_and_send():
                 if not recent_log:
                     threading.Thread(target=send_reminder_task, args=(m.id,), daemon=True).start()
 
-# ── OTP & Registration Routes ─────────────────────────────────────────────────
+# ── NEW: Mobile OTP Route ───────────────────────────────────────────────────
 
-@app.route('/send_otp', methods=['POST'])
-def send_otp():
+@app.route('/send_mobile_otp', methods=['POST'])
+def send_mobile_otp():
     try:
-        # Get data from JSON fetch call
         data = request.get_json()
         mobile = data.get('mobile')
-        email = data.get('email') # Can also capture email if needed for Resend
         
-        generated_otp = str(random.randint(1000, 9999))
+        # Generate 4-digit OTP
+        otp = str(random.randint(1000, 9999))
         
-        # Store OTP in session since User doesn't exist in DB yet
-        session['temp_otp'] = generated_otp
-        session['temp_mobile'] = mobile
+        # Save to session to verify later during registration
+        session['mobile_otp'] = otp
+        session['target_mobile'] = mobile
         
-        # If you want to also send it to their email via Resend:
-        if email:
-            send_mail_via_resend(email, "Your Verification Code", f"Your code is: {generated_otp}")
-
-        # This shows in your Render/Server logs
-        print(f"DEBUG: OTP for {mobile} is {generated_otp}")
+        # Output to terminal/Render logs for project testing
+        print(f"\n--- MOBILE VERIFICATION ---")
+        print(f"Target Mobile: {mobile}")
+        print(f"Generated OTP: {otp}")
+        print(f"---------------------------\n")
         
-        return jsonify({"success": True, "message": "OTP Sent!"})
+        return jsonify({"success": True, "message": "OTP printed to server logs!"})
     except Exception as e:
-        print(f"Error: {e}")
         return jsonify({"success": False, "message": str(e)}), 500
+
+# ── OTP & Registration Routes ─────────────────────────────────────────────────
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -184,9 +182,9 @@ def register():
             mobile = request.form.get('mobile')
             entered_otp = request.form.get('otp_input')
 
-            # Verify against session-stored OTP
-            if entered_otp != session.get('temp_otp'):
-                flash("Invalid OTP. Please try again.", "danger")
+            # Verify against session-stored Mobile OTP
+            if entered_otp != session.get('mobile_otp'):
+                flash("Invalid Mobile OTP. Please check server logs.", "danger")
                 return render_template('register.html')
 
             if User.query.filter_by(email=email).first():
@@ -199,9 +197,9 @@ def register():
             db.session.add(user)
             db.session.commit()
             
-            # Clear temporary session data
-            session.pop('temp_otp', None)
-            session.pop('temp_mobile', None)
+            # Clear session data
+            session.pop('mobile_otp', None)
+            session.pop('target_mobile', None)
 
             flash("Account Created Successfully!", "success")
             return redirect(url_for('login'))
