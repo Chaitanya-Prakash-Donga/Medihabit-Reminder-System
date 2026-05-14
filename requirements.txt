@@ -1,7 +1,9 @@
 Flask
 Flask-SQLAlchemy
+Flask-Session
 APScheduler
 pytz
 gunicorn
 psycopg2-binary
 resend
+requests
