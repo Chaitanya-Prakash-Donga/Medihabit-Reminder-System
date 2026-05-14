@@ -1,5 +1,6 @@
 import os
 import threading
+import random
 import resend
 from datetime import datetime, timedelta
 from functools import wraps
@@ -18,7 +19,6 @@ app.secret_key = os.environ.get('SECURITY_KEY', 'medihabit-super-secret-123')
 resend.api_key = os.environ.get('RESEND_API_KEY')
 
 def get_now_naive():
-    # Remove microseconds for cleaner database comparison
     return datetime.now().replace(tzinfo=None, microsecond=0)
 
 uri = os.environ.get('DATABASE_URL')
@@ -53,6 +53,11 @@ class User(db.Model):
     name = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
+    # --- New Fields for OTP and Mobile ---
+    mobile = db.Column(db.String(15), default="9100000000") 
+    otp = db.Column(db.String(4), nullable=True)
+    is_verified = db.Column(db.Boolean, default=False)
+    # -------------------------------------
     created_at = db.Column(db.DateTime, default=get_now_naive)
     medications = db.relationship('Medication', backref='user', lazy=True, cascade='all, delete-orphan')
 
@@ -130,7 +135,6 @@ def check_and_send():
         meds = Medication.query.filter_by(active=True, email_enabled=True).all()
         for m in meds:
             if m.time1 == now_str or m.time2 == now_str:
-                # Check for existing log in the current minute to prevent duplicates
                 recent_log = AlertLog.query.filter(
                     AlertLog.user_id == m.user_id,
                     AlertLog.medication_name == m.name,
@@ -140,10 +144,47 @@ def check_and_send():
                 if not recent_log:
                     threading.Thread(target=send_reminder_task, args=(m.id,), daemon=True).start()
 
-# ── Routes ────────────────────────────────────────────────────────────────────
-@app.route('/')
-def index():
-    return redirect(url_for('dashboard')) if 'user_id' in session else redirect(url_for('login'))
+# ── OTP & Registration Routes ─────────────────────────────────────────────────
+
+@app.route('/send_otp', methods=['POST'])
+def send_otp():
+    # Use email from registration form (passed via JSON fetch) or session for existing users
+    data = request.get_json()
+    email = data.get('email') if data else None
+    
+    if not email:
+        return jsonify({"error": "Email is required"}), 400
+
+    generated_otp = str(random.randint(1000, 9999))
+    
+    # Store OTP temporarily in a way that registration can find it
+    # We check if a user already exists with this email (for profile edits) 
+    # OR we handle it during registration logic
+    user = User.query.filter_by(email=email).first()
+    
+    # If user doesn't exist yet (New Registration), we can't save to DB.user.id
+    # Instead, we send it and the register route will verify it.
+    
+    subject = "Verification Code - MediHabit"
+    body = f"Your 4-digit verification code is: {generated_otp}"
+    
+    success = send_mail_via_resend(email, subject, body)
+    
+    if success:
+        # For academic demo purposes, we store it in the session or a global tracker
+        # If user exists, update their OTP field
+        if user:
+            user.otp = generated_otp
+            db.session.commit()
+        else:
+            # If new user, keep OTP in session to verify upon form submission
+            session['reg_otp'] = generated_otp
+            session['reg_email'] = email
+            
+        print(f"DEBUG: OTP for {email} is {generated_otp}")
+        return jsonify({"status": "sent"}), 200
+    
+    return jsonify({"error": "Failed to send email"}), 500
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -152,19 +193,38 @@ def register():
             name = request.form.get('name')
             email = request.form.get('email').strip().lower()
             pw = request.form.get('password')
+            entered_otp = request.form.get('otp_input')
+
+            # Verification Logic
+            stored_otp = session.get('reg_otp')
+            if entered_otp != stored_otp:
+                flash("Invalid OTP. Please try again.", "danger")
+                return render_template('register.html')
+
             if User.query.filter_by(email=email).first():
                 flash("Email already registered!", "danger")
                 return redirect(url_for('register'))
-            user = User(name=name, email=email)
+
+            user = User(name=name, email=email, is_verified=True)
             user.set_password(pw)
             db.session.add(user)
             db.session.commit()
-            flash("Account created! Please login.", "success")
+            
+            # Cleanup session
+            session.pop('reg_otp', None)
+            session.pop('reg_email', None)
+
+            flash("Account Created Successfully!", "success")
             return redirect(url_for('login'))
         except Exception as e:
             db.session.rollback()
             flash(f"Error: {str(e)}", "danger")
     return render_template('register.html')
+
+# ── Standard Routes ───────────────────────────────────────────────────────────
+@app.route('/')
+def index():
+    return redirect(url_for('dashboard')) if 'user_id' in session else redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -197,11 +257,8 @@ def dashboard():
     ).order_by(AlertLog.sent_at.desc()).all()
 
     return render_template('dashboard.html',
-                           meds=meds,
-                           meds_js=meds_js,
-                           logs=logs,
-                           user=user,
-                           today_date=datetime.now().strftime('%A, %d %B'))
+                           meds=meds, meds_js=meds_js, logs=logs,
+                           user=user, today_date=datetime.now().strftime('%A, %d %B'))
 
 @app.route('/medication/add', methods=['POST'])
 @login_required
@@ -225,10 +282,8 @@ def add_medication():
 @login_required
 def edit_medication(id):
     med = Medication.query.get_or_404(id) 
-    
     if med.user_id != session['user_id']:
         abort(403)
-        
     if request.method == 'POST':
         med.name = request.form.get('name')
         med.dose = request.form.get('dose')
@@ -237,23 +292,10 @@ def edit_medication(id):
         med.recipient_email = request.form.get('recipient_email')
         med.notes = request.form.get('notes')
         med.email_enabled = 'email_enabled' in request.form
-        
         db.session.commit()
         flash(f'"{med.name}" updated!', 'success')
         return redirect(url_for('dashboard'))
-
-    return render_template('edit_medicine.html', med=med)
-
-@app.route('/medication/delete/<int:id>', methods=['POST'])
-@login_required
-def delete_medication(id):
-    med = Medication.query.get_or_404(id)
-    if med.user_id != session['user_id']:
-        abort(403)
-    db.session.delete(med)
-    db.session.commit()
-    flash("Medication deleted.", "success")
-    return redirect(url_for('dashboard'))
+    return render_template('edit_medication.html', med=med)
 
 @app.route('/profile', methods=['GET', 'POST'])
 @login_required
@@ -275,26 +317,20 @@ def profile():
 def trigger_reminder(med_id):
     med = Medication.query.get(med_id)
     if not med: return jsonify({"status": "not_found"}), 404
-    
-    # --- DUPLICATE PREVENTION LOCK ---
-    # Check if a log was created for this medication in the last 60 seconds
     now = get_now_naive()
     recent_log = AlertLog.query.filter(
         AlertLog.user_id == session['user_id'],
         AlertLog.medication_name == med.name,
         AlertLog.sent_at >= now - timedelta(seconds=59)
     ).first()
-
     if recent_log:
         return jsonify({"status": "already_sent_this_minute"}), 200
-
     new_log = AlertLog(
         user_id=session['user_id'], medication_name=med.name,
         status='pending', recipient=med.recipient_email, sent_at=now
     )
     db.session.add(new_log)
     db.session.commit()
-    
     threading.Thread(target=send_reminder_task, args=(med.id, new_log.id), daemon=True).start()
     return jsonify({"status": "received"}), 200
 
